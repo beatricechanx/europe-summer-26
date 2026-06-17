@@ -430,6 +430,18 @@ export default function TravelPage() {
         <div style={{ fontSize: 12, color: MORANDI.textLight, letterSpacing: 2.5, borderTop: `1px solid ${MORANDI.border}`, paddingTop: 12, display: "inline-block", paddingLeft: 16, paddingRight: 16, fontFamily: "'Cormorant Garamond', serif", textTransform: "uppercase" }}>
           🌞Wien · Praha · Budapest 🇪🇺✨
         </div>
+        <div style={{ marginTop: 16 }}>
+          <a
+            href="https://maps.app.goo.gl/StN8UirVpaZVF36h8?g_st=i"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 18px", borderRadius: 20, border: `1px solid ${MORANDI.border}`, background: MORANDI.white, color: MORANDI.text, fontSize: 12, textDecoration: "none", fontWeight: 500, letterSpacing: 0.3 }}
+          >
+            <span style={{ fontSize: 16 }}>🗺️</span>
+            <span>Europe₍ᐢ. .ᐢ₎₊˚⊹ ᰔ · Beatrice</span>
+            <span style={{ fontSize: 10, color: MORANDI.textLight }}>↗</span>
+          </a>
+        </div>
       </div>
 
       {/* ── Tab switcher ── */}
