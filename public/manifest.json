@@ -1,0 +1,15 @@
+{
+  "name": "Bea & Cora's European Summer 2026",
+  "short_name": "Europe 2026",
+  "description": "Wien · Praha · Budapest trip planner for Bea & Cora",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#E8E4DF",
+  "theme_color": "#C4A9A0",
+  "orientation": "portrait",
+  "lang": "zh-HK",
+  "categories": ["travel", "lifestyle"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

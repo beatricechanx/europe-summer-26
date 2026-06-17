@@ -99,7 +99,7 @@ function NominatimSearch({ activeCity, onAddPlace }) {
       setLoading(true);
       try {
         const bbox = CITY_BBOX[activeCity];
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&viewbox=${bbox}&bounded=1&email=beatricechanx@gmail.com&accept-language=zh-HK,zh,en`;
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&viewbox=${bbox}&bounded=1&email=beatricechanx@gmail.com&accept-language=zh-TW,zh-HK,zh,en`;
         const res = await fetch(url);
         const data = await res.json();
         setResults(data);

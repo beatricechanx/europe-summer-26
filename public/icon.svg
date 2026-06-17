@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="90" fill="#E8E4DF"/>
+  <circle cx="256" cy="210" r="130" fill="none" stroke="#D5D0CA" stroke-width="6"/>
+  <circle cx="256" cy="210" r="100" fill="#F2EFEB"/>
+  <!-- Sun rays -->
+  <g stroke="#BFA58A" stroke-width="5" stroke-linecap="round" opacity="0.6">
+    <line x1="256" y1="70" x2="256" y2="50"/>
+    <line x1="322" y1="90" x2="333" y2="73"/>
+    <line x1="370" y1="138" x2="384" y2="127"/>
+    <line x1="390" y1="204" x2="410" y2="202"/>
+    <line x1="370" y1="268" x2="384" y2="279"/>
+    <line x1="322" y1="316" x2="333" y2="333"/>
+    <line x1="256" y1="338" x2="256" y2="358"/>
+    <line x1="190" y1="316" x2="179" y2="333"/>
+    <line x1="142" y1="268" x2="128" y2="279"/>
+    <line x1="122" y1="204" x2="102" y2="202"/>
+    <line x1="142" y1="138" x2="128" y2="127"/>
+    <line x1="190" y1="90" x2="179" y2="73"/>
+  </g>
+  <!-- Sun glow -->
+  <circle cx="256" cy="210" r="58" fill="#C4A9A0" opacity="0.85"/>
+  <circle cx="256" cy="210" r="44" fill="#F2EFEB"/>
+  <!-- Tiny plane -->
+  <path d="M256,185 L272,220 L256,213 L256,228 L240,221 L240,213 L224,220 Z"
+        fill="#9B8E82" transform="rotate(-20,256,210)"/>
+  <!-- Three city dots with connecting arc -->
+  <circle cx="178" cy="360" r="12" fill="#A3AE9E"/>
+  <circle cx="256" cy="378" r="12" fill="#C4A9A0"/>
+  <circle cx="336" cy="360" r="12" fill="#8E9CA5"/>
+  <path d="M190,360 Q256,345 322,360" fill="none" stroke="#D5D0CA" stroke-width="3" stroke-dasharray="8,5"/>
+  <!-- Labels under dots -->
+  <text x="178" y="392" font-size="18" text-anchor="middle" font-family="Georgia, serif" fill="#8A8580">W</text>
+  <text x="256" y="410" font-size="18" text-anchor="middle" font-family="Georgia, serif" fill="#8A8580">P</text>
+  <text x="336" y="392" font-size="18" text-anchor="middle" font-family="Georgia, serif" fill="#8A8580">B</text>
+  <!-- Bottom text -->
+  <text x="256" y="454" font-size="26" text-anchor="middle" font-family="Georgia, serif" fill="#8A8580" font-style="italic">Bea &amp; Cora</text>
+  <text x="256" y="490" font-size="19" text-anchor="middle" font-family="Georgia, serif" fill="#BFA58A" letter-spacing="5">2026</text>
+</svg>
