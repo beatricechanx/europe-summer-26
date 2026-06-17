@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import MapView from "./components/MapView";
+import CountdownTimer from "./components/CountdownTimer";
+import ProfilePicker from "./components/ProfilePicker";
+import TripTimeline from "./components/TripTimeline";
+import BudgetPage from "./components/BudgetPage";
+import { usePersisted } from "./utils/storage";
 import { MAP_PLACES } from "./data/places";
 
 const MORANDI = {
@@ -20,28 +25,16 @@ const MORANDI = {
 const CAT_OPTIONS = ["景點", "餐廳", "咖啡 · 甜點", "甜點 · 酒吧", "其他"];
 const EXPENSE_CATS = ["餐飲", "交通", "住宿", "購物", "門票", "其他"];
 
-// ── Persist state to localStorage ──────────────────────────────────────────
-function usePersisted(key, defaultValue) {
-  const [state, setState] = useState(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      return stored !== null ? JSON.parse(stored) : defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
-  }, [key, state]);
-  return [state, setState];
-}
+// Nominatim viewbox: left,top,right,bottom
+const CITY_BBOX = {
+  vienna:   "16.18,48.33,16.58,48.10",
+  prague:   "14.22,50.18,14.71,49.97",
+  budapest: "18.92,47.62,19.33,47.35",
+};
 
-// ── Google Maps search URL for a place name + city ─────────────────────────
 function mapsUrl(name, cityNameEn) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + " " + cityNameEn)}`;
 }
-
-// ── Data ────────────────────────────────────────────────────────────────────
 
 const cities = [
   {
@@ -155,6 +148,13 @@ const transport = [
   { from: "Beijing (PKX)", to: "Hong Kong (HKG)", icon: "✈️", flight: "CA 763", detail: "7/18 Sat · 13:40 — 17:10", trainKey: null },
 ];
 
+const DEFAULT_EXPENSES = [
+  { id: 1, desc: "機票 (CA 110 + CA 841)", amount: 6800, category: "交通" },
+  { id: 2, desc: "Vienna 酒店住宿", amount: 4500, category: "住宿" },
+  { id: 3, desc: "Prague 酒店住宿", amount: 3200, category: "住宿" },
+  { id: 4, desc: "Budapest 酒店住宿", amount: 3800, category: "住宿" },
+];
+
 // ── Tiny shared UI ──────────────────────────────────────────────────────────
 
 const ChevronDown = ({ rotated }) => (
@@ -172,16 +172,10 @@ const IconBtn = ({ onClick, title, children, danger }) => (
   </button>
 );
 
-// Small 📍 icon that opens Google Maps — stops row click propagation
 const MapsLink = ({ name, cityNameEn }) => (
-  <a
-    href={mapsUrl(name, cityNameEn)}
-    target="_blank"
-    rel="noopener noreferrer"
-    onClick={e => e.stopPropagation()}
-    title="在 Google Maps 搵"
-    style={{ fontSize: 12, color: MORANDI.textLight, textDecoration: "none", flexShrink: 0, lineHeight: 1, padding: "0 2px" }}
-  >
+  <a href={mapsUrl(name, cityNameEn)} target="_blank" rel="noopener noreferrer"
+    onClick={e => e.stopPropagation()} title="在 Google Maps 搵"
+    style={{ fontSize: 12, color: MORANDI.textLight, textDecoration: "none", flexShrink: 0, lineHeight: 1, padding: "0 2px" }}>
     📍
   </a>
 );
@@ -263,52 +257,77 @@ const CityIllustration = ({ city }) => {
 };
 
 if (typeof document !== "undefined") {
-  const link = document.createElement("link");
-  link.href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap";
-  link.rel = "stylesheet";
-  document.head.appendChild(link);
+  const href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap";
+  if (!document.head.querySelector(`link[href="${href}"]`)) {
+    const link = document.createElement("link");
+    link.href = href; link.rel = "stylesheet";
+    document.head.appendChild(link);
+  }
 }
 
-// ── Main component ──────────────────────────────────────────────────────────
-
-const DEFAULT_EXPENSES = [
-  { id: 1, desc: "機票 (CA 110 + CA 841)", amount: 6800, category: "交通" },
-  { id: 2, desc: "Vienna 酒店住宿", amount: 4500, category: "住宿" },
-  { id: 3, desc: "Prague 酒店住宿", amount: 3200, category: "住宿" },
-  { id: 4, desc: "Budapest 酒店住宿", amount: 3800, category: "住宿" },
-];
+// ── Outer wrapper: handles user profile ─────────────────────────────────────
 
 export default function TravelPage() {
+  const [user, setUser] = useState(() => localStorage.getItem("eu-user") || "");
+
+  if (!user) {
+    return (
+      <ProfilePicker onSelect={(name) => {
+        localStorage.setItem("eu-user", name);
+        setUser(name);
+      }} />
+    );
+  }
+
+  return (
+    <AppContent
+      key={user}
+      user={user}
+      onChangeUser={() => {
+        localStorage.removeItem("eu-user");
+        setUser("");
+      }}
+    />
+  );
+}
+
+// ── Inner app (remounted on user switch) ─────────────────────────────────────
+
+function AppContent({ user, onChangeUser }) {
+  const userEmoji = user === "Bea" ? "🍒" : "🌸";
+
   const [activeCity, setActiveCity] = useState("vienna");
-  const [openCats, setOpenCats] = usePersisted("openCats", {});
-  const [trainRefs, setTrainRefs] = usePersisted("trainRefs", { vp: "", pb: "" });
-  const [checkedItems, setCheckedItems] = usePersisted("checkedItems", {});
+  const [openCats, setOpenCats] = usePersisted(`${user}:openCats`, {});
+  const [trainRefs, setTrainRefs] = usePersisted(`${user}:trainRefs`, { vp: "", pb: "" });
+  const [checkedItems, setCheckedItems] = usePersisted(`${user}:checkedItems`, {});
   const [activeTab, setActiveTab] = useState("itinerary");
   const [transportOpen, setTransportOpen] = useState(true);
 
-  // ── Custom places (persisted) ──
-  const [customPlaces, setCustomPlaces] = usePersisted("customPlaces", { vienna: [], prague: [], budapest: [] });
+  // Custom places (persisted, user-namespaced)
+  const [customPlaces, setCustomPlaces] = usePersisted(`${user}:customPlaces`, { vienna: [], prague: [], budapest: [] });
   const [newPlaceName, setNewPlaceName] = useState("");
   const [newPlaceCat, setNewPlaceCat] = useState("景點");
   const [editingPlaceId, setEditingPlaceId] = useState(null);
   const [editingPlaceData, setEditingPlaceData] = useState({ name: "", note: "", cat: "景點" });
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [nominatimSuggestions, setNominatimSuggestions] = useState([]);
+  const [selectedNominatim, setSelectedNominatim] = useState(null);
   const suggestionsRef = useRef(null);
 
-  // ── Expenses (persisted) ──
-  const [expenses, setExpenses] = usePersisted("expenses", DEFAULT_EXPENSES);
+  // Simple expenses (persisted, user-namespaced)
+  const [expenses, setExpenses] = usePersisted(`${user}:expenses`, DEFAULT_EXPENSES);
   const [newExpenseDesc, setNewExpenseDesc] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
   const [newExpenseCat, setNewExpenseCat] = useState("餐飲");
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [editingExpenseData, setEditingExpenseData] = useState({ desc: "", amount: "", category: "餐飲" });
 
-  // ── Weather ──
-  const [weatherData, setWeatherData] = useState({ vienna: "載入天氣中...", prague: "載入天氣中...", budapest: "載入天氣中..." });
+  const [weatherData, setWeatherData] = useState({ vienna: "載入中…", prague: "載入中…", budapest: "載入中…" });
 
+  // Fetch weather
   useEffect(() => {
-    const fetchWeather = async () => {
-      const updated = { ...weatherData };
+    (async () => {
+      const updated = {};
       for (const c of cities) {
         try {
           const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`);
@@ -323,14 +342,31 @@ export default function TravelPage() {
           if (code >= 80 && code <= 82) desc = "陣雨🌧️";
           if (code >= 95) desc = "雷暴⛈️";
           updated[c.id] = `${temp}°C · ${desc}`;
-        } catch { updated[c.id] = c.weather; }
+        } catch {
+          updated[c.id] = c.weather;
+        }
       }
       setWeatherData(updated);
-    };
-    fetchWeather();
+    })();
   }, []);
 
-  // Close suggestions on outside click
+  // Nominatim autocomplete for add-place form
+  useEffect(() => {
+    if (newPlaceName.trim().length < 2) { setNominatimSuggestions([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const bbox = CITY_BBOX[activeCity];
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(newPlaceName)}&format=json&limit=6&viewbox=${bbox}&bounded=1&email=beatricechanx@gmail.com&accept-language=zh-HK,zh,en`);
+        const data = await res.json();
+        setNominatimSuggestions(data);
+      } catch {
+        setNominatimSuggestions([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [newPlaceName, activeCity]);
+
+  // Close suggestion dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
@@ -341,28 +377,28 @@ export default function TravelPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── Autocomplete suggestions from MAP_PLACES ──
-  const suggestions = newPlaceName.trim().length >= 1
-    ? MAP_PLACES.filter(p =>
-        p.city === activeCity &&
-        (p.name.toLowerCase().includes(newPlaceName.toLowerCase()) ||
-         (p.nameZh && p.nameZh.includes(newPlaceName)))
-      ).slice(0, 6)
-    : [];
+  // ── Handlers ──
 
-  // ── Checklist ──
   const toggleCat = (key) => setOpenCats(p => ({ ...p, [key]: !p[key] }));
   const toggleCheck = (id) => setCheckedItems(p => ({ ...p, [id]: !p[id] }));
 
-  // ── Custom place handlers ──
   const handleAddPlace = (e) => {
     e.preventDefault();
     if (!newPlaceName.trim()) return;
-    setCustomPlaces(p => ({
-      ...p,
-      [activeCity]: [...p[activeCity], { id: Date.now(), name: newPlaceName.trim(), note: "", cat: newPlaceCat }],
-    }));
+    const place = {
+      id: Date.now(),
+      name: newPlaceName.trim(),
+      note: "",
+      cat: newPlaceCat,
+      ...(selectedNominatim && {
+        mapLat: parseFloat(selectedNominatim.lat),
+        mapLng: parseFloat(selectedNominatim.lon),
+      }),
+    };
+    setCustomPlaces(p => ({ ...p, [activeCity]: [...p[activeCity], place] }));
     setNewPlaceName("");
+    setSelectedNominatim(null);
+    setNominatimSuggestions([]);
     setShowSuggestions(false);
   };
 
@@ -373,19 +409,25 @@ export default function TravelPage() {
 
   const startEditPlace = (place) => {
     setEditingPlaceId(place.id);
-    setEditingPlaceData({ name: place.name, note: place.note, cat: place.cat });
+    setEditingPlaceData({ name: place.name, note: place.note ?? "", cat: place.cat });
   };
 
   const saveEditPlace = (cityId) => {
     if (!editingPlaceData.name.trim()) return;
     setCustomPlaces(p => ({
       ...p,
-      [cityId]: p[cityId].map(x => x.id === editingPlaceId ? { ...x, ...editingPlaceData, name: editingPlaceData.name.trim() } : x),
+      [cityId]: p[cityId].map(x => x.id === editingPlaceId
+        ? { ...x, ...editingPlaceData, name: editingPlaceData.name.trim() }
+        : x),
     }));
     setEditingPlaceId(null);
   };
 
-  // ── Expense handlers ──
+  // Called from MapView when user adds a pin via Nominatim search
+  const handleMapAddPlace = (cityId, place) => {
+    setCustomPlaces(p => ({ ...p, [cityId]: [...(p[cityId] ?? []), place] }));
+  };
+
   const handleAddExpense = (e) => {
     e.preventDefault();
     if (!newExpenseDesc.trim() || !newExpenseAmount) return;
@@ -416,331 +458,362 @@ export default function TravelPage() {
   const city = cities.find(c => c.id === activeCity);
   const totalSpent = expenses.reduce((sum, x) => sum + x.amount, 0);
   const cityCustomPlaces = customPlaces[activeCity] ?? [];
+  const showCityCols = activeTab !== "budget";
 
   return (
     <div style={{ minHeight: "100vh", background: MORANDI.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Noto Sans TC', sans-serif", color: MORANDI.text, maxWidth: 480, margin: "0 auto", paddingBottom: 100 }}>
 
       {/* ── Header ── */}
-      <div style={{ padding: "45px 24px 20px", textAlign: "center" }}>
-        <div style={{ fontSize: 10, letterSpacing: 4, textTransform: "uppercase", color: MORANDI.textLight, marginBottom: 12 }}>JULY 2026 ₍ᐢ.ˬ.ᐢ₎♡🍒</div>
-        <h1 style={{ fontSize: 38, fontWeight: 300, margin: "0 0 16px", letterSpacing: 1, color: "#C4A9A0", lineHeight: 1.2, fontStyle: "italic", fontFamily: "'Cormorant Garamond', serif" }}>
+      <div style={{ padding: "36px 24px 16px", textAlign: "center" }}>
+        <div style={{ fontSize: 10, letterSpacing: 4, textTransform: "uppercase", color: MORANDI.textLight, marginBottom: 8 }}>JULY 2026 ₍ᐢ.ˬ.ᐢ₎♡🍒</div>
+        <h1 style={{ fontSize: 36, fontWeight: 300, margin: "0 0 4px", letterSpacing: 1, color: "#C4A9A0", lineHeight: 1.2, fontStyle: "italic", fontFamily: "'Cormorant Garamond', serif" }}>
           <div>Bea & Cora's</div>
-          <div style={{ marginTop: 4, fontSize: 32 }}>European Summer</div>
+          <div style={{ marginTop: 2, fontSize: 30 }}>European Summer</div>
         </h1>
-        <div style={{ fontSize: 12, color: MORANDI.textLight, letterSpacing: 2.5, borderTop: `1px solid ${MORANDI.border}`, paddingTop: 12, display: "inline-block", paddingLeft: 16, paddingRight: 16, fontFamily: "'Cormorant Garamond', serif", textTransform: "uppercase" }}>
-          🌞Wien · Praha · Budapest 🇪🇺✨
+
+        {/* Countdown */}
+        <CountdownTimer />
+
+        <div style={{ fontSize: 12, color: MORANDI.textLight, letterSpacing: 2.5, borderTop: `1px solid ${MORANDI.border}`, paddingTop: 10, marginTop: 10, display: "inline-block", paddingLeft: 16, paddingRight: 16, fontFamily: "'Cormorant Garamond', serif", textTransform: "uppercase" }}>
+          🌞 Wien · Praha · Budapest 🇪🇺✨
         </div>
-        <div style={{ marginTop: 16 }}>
-          <a
-            href="https://maps.app.goo.gl/StN8UirVpaZVF36h8?g_st=i"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 18px", borderRadius: 20, border: `1px solid ${MORANDI.border}`, background: MORANDI.white, color: MORANDI.text, fontSize: 12, textDecoration: "none", fontWeight: 500, letterSpacing: 0.3 }}
-          >
-            <span style={{ fontSize: 16 }}>🗺️</span>
+
+        {/* Action row */}
+        <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+          <a href="https://maps.app.goo.gl/StN8UirVpaZVF36h8?g_st=i" target="_blank" rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 18, border: `1px solid ${MORANDI.border}`, background: MORANDI.white, color: MORANDI.text, fontSize: 11, textDecoration: "none", fontWeight: 500, letterSpacing: 0.3 }}>
+            <span style={{ fontSize: 14 }}>🗺️</span>
             <span>Europe₍ᐢ. .ᐢ₎₊˚⊹ ᰔ · Beatrice</span>
-            <span style={{ fontSize: 10, color: MORANDI.textLight }}>↗</span>
+            <span style={{ fontSize: 9, color: MORANDI.textLight }}>↗</span>
           </a>
+          {/* Profile chip */}
+          <button onClick={onChangeUser}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 18, border: `1px solid ${MORANDI.border}`, background: MORANDI.card, color: MORANDI.textLight, fontSize: 11, cursor: "pointer", letterSpacing: 0.3 }}>
+            <span>{userEmoji}</span>
+            <span>{user}</span>
+            <span style={{ fontSize: 9 }}>切換</span>
+          </button>
         </div>
       </div>
 
       {/* ── Tab switcher ── */}
-      <div style={{ display: "flex", gap: 12, padding: "0 24px", marginBottom: 20 }}>
-        {[["itinerary", "詳細行程清單"], ["map", "互動地圖"]].map(([tab, label]) => (
-          <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: "10px", background: activeTab === tab ? MORANDI.card : "transparent", color: MORANDI.text, border: `1px solid ${MORANDI.border}`, borderRadius: 12, fontSize: 12, letterSpacing: 0.5, fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer" }}>
+      <div style={{ display: "flex", gap: 8, padding: "0 24px", marginBottom: 20 }}>
+        {[["itinerary", "行程清單"], ["map", "地圖"], ["budget", "預算分帳"]].map(([tab, label]) => (
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: "9px 4px", background: activeTab === tab ? MORANDI.card : "transparent", color: MORANDI.text, border: `1px solid ${MORANDI.border}`, borderRadius: 12, fontSize: 11, letterSpacing: 0.3, fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "all 0.15s" }}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── Transport — collapsible ── */}
-      <div style={{ padding: "0 24px", marginBottom: 24 }}>
-        <div style={{ background: MORANDI.card, borderRadius: 16, border: `1px solid ${MORANDI.border}`, overflow: "hidden" }}>
-          <button onClick={() => setTransportOpen(p => !p)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", background: "transparent", border: "none", cursor: "pointer", borderBottom: transportOpen ? `1px solid ${MORANDI.border}` : "none" }}>
-            <span style={{ fontSize: 10, letterSpacing: 2, color: MORANDI.textLight, textTransform: "uppercase", fontWeight: 500 }}>✈️ 航班與交通路程</span>
-            <ChevronDown rotated={transportOpen} />
-          </button>
-          {transportOpen && (
-            <div style={{ padding: "4px 20px 8px" }}>
-              {transport.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 0", borderBottom: i < transport.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
-                  <span style={{ fontSize: 15, width: 20, marginTop: 2, textAlign: "center" }}>{t.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{t.from} → {t.to}</span>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
-                      {t.flight && <span style={{ fontSize: 9, background: MORANDI.border, padding: "2px 6px", borderRadius: 4, color: MORANDI.text, fontWeight: 500 }}>{t.flight}</span>}
-                      <span style={{ fontSize: 11, color: MORANDI.textLight }}>{t.detail}</span>
-                    </div>
-                  </div>
-                  {t.trainKey && (
-                    <input placeholder="Ref 編號" value={trainRefs[t.trainKey]} onChange={e => setTrainRefs(p => ({ ...p, [t.trainKey]: e.target.value }))}
-                      style={{ width: 78, fontSize: 10, padding: "4px 8px", border: `1px solid ${MORANDI.border}`, borderRadius: 8, background: MORANDI.white, color: MORANDI.text, outline: "none", marginTop: 2 }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Budget tab — full page, no city tabs */}
+      {activeTab === "budget" && <BudgetPage user={user} />}
 
-      {/* ── City tabs ── */}
-      <div style={{ display: "flex", padding: "0 24px", marginBottom: 24 }}>
-        {cities.map(c => (
-          <button key={c.id} onClick={() => setActiveCity(c.id)} style={{ flex: 1, padding: "10px 0", border: "none", cursor: "pointer", background: "transparent", borderBottom: activeCity === c.id ? `2px solid ${c.accent}` : `1px solid ${MORANDI.border}`, color: activeCity === c.id ? MORANDI.text : MORANDI.textLight, fontSize: 13, fontWeight: activeCity === c.id ? 500 : 400, letterSpacing: 0.5 }}>
-            {c.name}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Per-city content ── */}
-      <div style={{ padding: "0 24px" }}>
-        <div style={{ marginBottom: 16, opacity: 0.85 }}><CityIllustration city={activeCity} /></div>
-
-        <div style={{ textAlign: "center", marginBottom: 24, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 16, fontWeight: 400, letterSpacing: 0.5, marginBottom: 4, fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>{city.tagline}</div>
-          <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 12 }}>{city.dates}</div>
-          <a href={city.mapUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 12, border: `1px solid ${MORANDI.border}`, color: MORANDI.textLight, fontSize: 10, textDecoration: "none", fontStyle: "italic" }}>
-            📍 Explore {city.nameEn} Map
-          </a>
-        </div>
-
-        {/* Hotel */}
-        <div style={{ background: MORANDI.white, borderRadius: 14, padding: "16px 18px", marginBottom: 12, border: `1px solid ${MORANDI.border}` }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: MORANDI.textLight, marginBottom: 6 }}>住宿</div>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>{city.hotel}</div>
-          <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{city.hotelNote}</div>
-        </div>
-
-        {/* Weather */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", marginBottom: 20, background: MORANDI.card, borderRadius: 10, border: `1px solid ${MORANDI.border}` }}>
-          <svg width="16" height="16" viewBox="0 0 16 16">
-            <circle cx="8" cy="8" r="3.5" fill="none" stroke={MORANDI.warm} strokeWidth="1.2" />
-            {[0,45,90,135,180,225,270,315].map(a => {
-              const x1 = 8+5*Math.cos(a*Math.PI/180), y1 = 8+5*Math.sin(a*Math.PI/180);
-              const x2 = 8+6.5*Math.cos(a*Math.PI/180), y2 = 8+6.5*Math.sin(a*Math.PI/180);
-              return <line key={a} x1={x1} y1={y1} x2={x2} y2={y2} stroke={MORANDI.warm} strokeWidth="0.8" />;
-            })}
-          </svg>
-          <span style={{ fontSize: 12, color: MORANDI.textLight, fontStyle: "italic" }}>Real-time Weather: {weatherData[activeCity]}</span>
-        </div>
-
-        {/* ── Tab content ── */}
-        {activeTab === "itinerary" ? (
-          <div>
-
-            {/* Preset place categories */}
-            {city.places.map((cat, ci) => {
-              const key = `${activeCity}-${ci}`;
-              const isOpen = openCats[key] !== false;
-              return (
-                <div key={key} style={{ marginBottom: 12 }}>
-                  <button onClick={() => toggleCat(key)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", border: "none", cursor: "pointer", background: MORANDI.card, borderRadius: isOpen ? "12px 12px 0 0" : 12, color: MORANDI.text, borderBottom: isOpen ? `1px solid ${MORANDI.border}` : "none" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <CatIcon cat={cat.cat} />
-                      <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: 0.5 }}>{cat.cat}</span>
-                      <span style={{ fontSize: 10, color: MORANDI.textLight, marginLeft: 6 }}>{cat.items.length}</span>
-                    </div>
-                    <ChevronDown rotated={isOpen} />
-                  </button>
-                  {isOpen && (
-                    <div style={{ background: MORANDI.card, borderRadius: "0 0 12px 12px", padding: "4px 0" }}>
-                      {cat.items.map((item, ii) => {
-                        const itemId = `${key}-${ii}`;
-                        const isChecked = !!checkedItems[itemId];
-                        return (
-                          <div key={ii} onClick={() => toggleCheck(itemId)} style={{ padding: "11px 18px", display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", backgroundColor: isChecked ? "rgba(250,250,248,0.4)" : "transparent", borderBottom: ii < cat.items.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
-                            {/* Checkbox */}
-                            <div style={{ marginTop: 2, width: 13, height: 13, borderRadius: "50%", border: `1px solid ${isChecked ? MORANDI.accent : MORANDI.textLight}`, background: isChecked ? MORANDI.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                              {isChecked && <div style={{ width: 5, height: 5, borderRadius: "50%", background: MORANDI.white }} />}
-                            </div>
-                            {/* Name + maps link */}
-                            <div style={{ flex: 1, opacity: isChecked ? 0.5 : 1 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-                                <span style={{ fontSize: 13, fontWeight: 500, textDecoration: isChecked ? "line-through" : "none" }}>{item.name}</span>
-                                {item.nameZh && <span style={{ fontSize: 12, color: MORANDI.textLight, fontWeight: 400 }}>({item.nameZh})</span>}
-                                <MapsLink name={item.name} cityNameEn={city.nameEn} />
-                              </div>
-                              {item.note && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{item.note}</div>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* ── Custom places (My List) ── */}
-            <div style={{ marginTop: 20, marginBottom: 12 }}>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: MORANDI.textLight, textTransform: "uppercase", marginBottom: 10, paddingLeft: 2 }}>
-                我的清單 · {city.nameEn}{cityCustomPlaces.length > 0 && ` (${cityCustomPlaces.length})`}
-              </div>
-
-              {cityCustomPlaces.length > 0 && (
-                <div style={{ background: MORANDI.card, borderRadius: 12, marginBottom: 10, overflow: "hidden", border: `1px solid ${MORANDI.border}` }}>
-                  {cityCustomPlaces.map((place, pi) => (
-                    <div key={place.id}>
-                      {editingPlaceId === place.id ? (
-                        <div style={{ padding: "12px 16px", background: MORANDI.white, borderBottom: pi < cityCustomPlaces.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
-                          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                            <input value={editingPlaceData.name} onChange={e => setEditingPlaceData(p => ({ ...p, name: e.target.value }))} placeholder="名稱" style={inputStyle({ flex: 1 })} />
-                            <select value={editingPlaceData.cat} onChange={e => setEditingPlaceData(p => ({ ...p, cat: e.target.value }))} style={inputStyle({ background: MORANDI.white })}>
-                              {CAT_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </div>
-                          <input value={editingPlaceData.note} onChange={e => setEditingPlaceData(p => ({ ...p, note: e.target.value }))} placeholder="備註 (可選)" style={inputStyle({ width: "100%", marginBottom: 8, boxSizing: "border-box" })} />
-                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button onClick={() => setEditingPlaceId(null)} style={{ padding: "5px 12px", border: `1px solid ${MORANDI.border}`, borderRadius: 6, background: "transparent", fontSize: 11, cursor: "pointer", color: MORANDI.textLight }}>取消</button>
-                            <button onClick={() => saveEditPlace(activeCity)} style={{ padding: "5px 12px", border: "none", borderRadius: 6, background: MORANDI.accent, color: MORANDI.white, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>儲存</button>
-                          </div>
+      {/* Itinerary + Map tabs share the city chrome */}
+      {showCityCols && (
+        <>
+          {/* ── Transport — collapsible ── */}
+          <div style={{ padding: "0 24px", marginBottom: 20 }}>
+            <div style={{ background: MORANDI.card, borderRadius: 16, border: `1px solid ${MORANDI.border}`, overflow: "hidden" }}>
+              <button onClick={() => setTransportOpen(p => !p)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 20px", background: "transparent", border: "none", cursor: "pointer", borderBottom: transportOpen ? `1px solid ${MORANDI.border}` : "none" }}>
+                <span style={{ fontSize: 10, letterSpacing: 2, color: MORANDI.textLight, textTransform: "uppercase", fontWeight: 500 }}>✈️ 航班與交通路程</span>
+                <ChevronDown rotated={transportOpen} />
+              </button>
+              {transportOpen && (
+                <div style={{ padding: "4px 20px 8px" }}>
+                  {transport.map((t, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "9px 0", borderBottom: i < transport.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
+                      <span style={{ fontSize: 15, width: 20, marginTop: 2, textAlign: "center" }}>{t.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{t.from} → {t.to}</span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
+                          {t.flight && <span style={{ fontSize: 9, background: MORANDI.border, padding: "2px 6px", borderRadius: 4, color: MORANDI.text, fontWeight: 500 }}>{t.flight}</span>}
+                          <span style={{ fontSize: 11, color: MORANDI.textLight }}>{t.detail}</span>
                         </div>
-                      ) : (
-                        <div style={{ padding: "10px 16px", display: "flex", alignItems: "flex-start", gap: 8, borderBottom: pi < cityCustomPlaces.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 9, background: MORANDI.accentSoft + "44", color: MORANDI.accent, padding: "2px 7px", borderRadius: 8, fontWeight: 600, border: `1px solid ${MORANDI.accentSoft}` }}>{place.cat}</span>
-                              <span style={{ fontSize: 13, fontWeight: 500 }}>{place.name}</span>
-                              <MapsLink name={place.name} cityNameEn={city.nameEn} />
-                            </div>
-                            {place.note && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 3 }}>{place.note}</div>}
-                          </div>
-                          <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
-                            <IconBtn onClick={() => startEditPlace(place)} title="編輯">✏️</IconBtn>
-                            <IconBtn onClick={() => handleDeletePlace(activeCity, place.id)} title="刪除" danger>✕</IconBtn>
-                          </div>
-                        </div>
+                      </div>
+                      {t.trainKey && (
+                        <input placeholder="Ref 編號" value={trainRefs[t.trainKey]}
+                          onChange={e => setTrainRefs(p => ({ ...p, [t.trainKey]: e.target.value }))}
+                          style={{ width: 78, fontSize: 10, padding: "4px 8px", border: `1px solid ${MORANDI.border}`, borderRadius: 8, background: MORANDI.white, color: MORANDI.text, outline: "none", marginTop: 2 }} />
                       )}
                     </div>
                   ))}
                 </div>
               )}
+            </div>
+          </div>
 
-              {/* Add new place form with autocomplete */}
-              <form onSubmit={handleAddPlace} style={{ background: MORANDI.white, padding: 14, borderRadius: 12, border: `1px solid ${MORANDI.border}` }}>
-                <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 8 }}>➕ 新增地點</div>
+          {/* ── City tabs ── */}
+          <div style={{ display: "flex", padding: "0 24px", marginBottom: 20 }}>
+            {cities.map(c => (
+              <button key={c.id} onClick={() => setActiveCity(c.id)} style={{ flex: 1, padding: "10px 0", border: "none", cursor: "pointer", background: "transparent", borderBottom: activeCity === c.id ? `2px solid ${c.accent}` : `1px solid ${MORANDI.border}`, color: activeCity === c.id ? MORANDI.text : MORANDI.textLight, fontSize: 13, fontWeight: activeCity === c.id ? 500 : 400, letterSpacing: 0.5, transition: "all 0.15s" }}>
+                {c.name}
+              </button>
+            ))}
+          </div>
 
-                {/* Input + Maps button + autocomplete wrapper */}
-                <div ref={suggestionsRef} style={{ position: "relative", marginBottom: 8 }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      type="text"
-                      placeholder="地點名稱 (輸入搜尋建議)"
-                      value={newPlaceName}
-                      onChange={e => { setNewPlaceName(e.target.value); setShowSuggestions(true); }}
-                      onFocus={() => setShowSuggestions(true)}
-                      style={inputStyle({ flex: 1 })}
-                      autoComplete="off"
-                    />
-                    {/* Opens Google Maps search in new tab */}
-                    <a
-                      href={newPlaceName.trim() ? mapsUrl(newPlaceName.trim(), city.nameEn) : undefined}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => { if (!newPlaceName.trim()) e.preventDefault(); }}
-                      title="先喺 Google Maps 搵"
-                      style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", borderRadius: 7, border: `1px solid ${MORANDI.border}`, background: newPlaceName.trim() ? MORANDI.bg : MORANDI.card, color: newPlaceName.trim() ? MORANDI.text : MORANDI.textLight, fontSize: 12, textDecoration: "none", cursor: newPlaceName.trim() ? "pointer" : "default", whiteSpace: "nowrap", flexShrink: 0 }}
-                    >
-                      🗺️ Maps
-                    </a>
+          {/* ── Per-city content ── */}
+          <div style={{ padding: "0 24px" }}>
+            <div style={{ marginBottom: 14, opacity: 0.85 }}><CityIllustration city={activeCity} /></div>
+
+            <div style={{ textAlign: "center", marginBottom: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <div style={{ fontSize: 16, fontWeight: 400, letterSpacing: 0.5, marginBottom: 4, fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>{city.tagline}</div>
+              <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 10 }}>{city.dates}</div>
+              <a href={city.mapUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 12, border: `1px solid ${MORANDI.border}`, color: MORANDI.textLight, fontSize: 10, textDecoration: "none", fontStyle: "italic" }}>
+                📍 Explore {city.nameEn} Map
+              </a>
+            </div>
+
+            {/* Hotel */}
+            <div style={{ background: MORANDI.white, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: `1px solid ${MORANDI.border}` }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: MORANDI.textLight, marginBottom: 5 }}>住宿</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{city.hotel}</div>
+              <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{city.hotelNote}</div>
+            </div>
+
+            {/* Weather */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", marginBottom: 18, background: MORANDI.card, borderRadius: 10, border: `1px solid ${MORANDI.border}` }}>
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <circle cx="8" cy="8" r="3.5" fill="none" stroke={MORANDI.warm} strokeWidth="1.2" />
+                {[0,45,90,135,180,225,270,315].map(a => {
+                  const x1 = 8+5*Math.cos(a*Math.PI/180), y1 = 8+5*Math.sin(a*Math.PI/180);
+                  const x2 = 8+6.5*Math.cos(a*Math.PI/180), y2 = 8+6.5*Math.sin(a*Math.PI/180);
+                  return <line key={a} x1={x1} y1={y1} x2={x2} y2={y2} stroke={MORANDI.warm} strokeWidth="0.8" />;
+                })}
+              </svg>
+              <span style={{ fontSize: 12, color: MORANDI.textLight, fontStyle: "italic" }}>Real-time: {weatherData[activeCity]}</span>
+            </div>
+
+            {/* ── Tab content ── */}
+            {activeTab === "itinerary" ? (
+              <div>
+                {/* Preset place categories */}
+                {city.places.map((cat, ci) => {
+                  const key = `${activeCity}-${ci}`;
+                  const isOpen = openCats[key] !== false;
+                  return (
+                    <div key={key} style={{ marginBottom: 10 }}>
+                      <button onClick={() => toggleCat(key)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 16px", border: "none", cursor: "pointer", background: MORANDI.card, borderRadius: isOpen ? "12px 12px 0 0" : 12, color: MORANDI.text, borderBottom: isOpen ? `1px solid ${MORANDI.border}` : "none" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <CatIcon cat={cat.cat} />
+                          <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: 0.5 }}>{cat.cat}</span>
+                          <span style={{ fontSize: 10, color: MORANDI.textLight, marginLeft: 4 }}>{cat.items.length}</span>
+                        </div>
+                        <ChevronDown rotated={isOpen} />
+                      </button>
+                      {isOpen && (
+                        <div style={{ background: MORANDI.card, borderRadius: "0 0 12px 12px", padding: "4px 0" }}>
+                          {cat.items.map((item, ii) => {
+                            const itemId = `${key}-${ii}`;
+                            const isChecked = !!checkedItems[itemId];
+                            return (
+                              <div key={ii} onClick={() => toggleCheck(itemId)} style={{ padding: "10px 16px", display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", backgroundColor: isChecked ? "rgba(250,250,248,0.4)" : "transparent", borderBottom: ii < cat.items.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
+                                <div style={{ marginTop: 2, width: 13, height: 13, borderRadius: "50%", border: `1px solid ${isChecked ? MORANDI.accent : MORANDI.textLight}`, background: isChecked ? MORANDI.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  {isChecked && <div style={{ width: 5, height: 5, borderRadius: "50%", background: MORANDI.white }} />}
+                                </div>
+                                <div style={{ flex: 1, opacity: isChecked ? 0.5 : 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 500, textDecoration: isChecked ? "line-through" : "none" }}>{item.name}</span>
+                                    {item.nameZh && <span style={{ fontSize: 12, color: MORANDI.textLight }}>{item.nameZh}</span>}
+                                    <MapsLink name={item.name} cityNameEn={city.nameEn} />
+                                  </div>
+                                  {item.note && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{item.note}</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ── Custom places (My List) ── */}
+                <div style={{ marginTop: 18, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: MORANDI.textLight, textTransform: "uppercase", marginBottom: 8, paddingLeft: 2 }}>
+                    我的清單 · {city.nameEn}{cityCustomPlaces.length > 0 && ` (${cityCustomPlaces.length})`}
                   </div>
 
-                  {/* Autocomplete dropdown */}
-                  {showSuggestions && suggestions.length > 0 && (
-                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 44, background: MORANDI.white, border: `1px solid ${MORANDI.border}`, borderRadius: 10, zIndex: 50, boxShadow: "0 6px 20px rgba(74,69,65,0.12)", overflow: "hidden" }}>
-                      {suggestions.map((s, i) => (
-                        <div
-                          key={i}
-                          onMouseDown={e => {
-                            e.preventDefault(); // prevent blur before click
-                            setNewPlaceName(s.name);
-                            setNewPlaceCat(s.cat);
-                            setShowSuggestions(false);
-                          }}
-                          style={{ padding: "9px 14px", cursor: "pointer", borderBottom: i < suggestions.length - 1 ? `1px solid ${MORANDI.border}` : "none", background: "transparent" }}
-                          onMouseEnter={e => e.currentTarget.style.background = MORANDI.card}
-                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 9, background: MORANDI.accentSoft + "33", color: MORANDI.accent, padding: "1px 6px", borderRadius: 6, fontWeight: 600, border: `1px solid ${MORANDI.accentSoft}`, flexShrink: 0 }}>{s.cat}</span>
-                            <span style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</span>
-                          </div>
-                          {s.nameZh && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{s.nameZh}</div>}
+                  {cityCustomPlaces.length > 0 && (
+                    <div style={{ background: MORANDI.card, borderRadius: 12, marginBottom: 10, overflow: "hidden", border: `1px solid ${MORANDI.border}` }}>
+                      {cityCustomPlaces.map((place, pi) => (
+                        <div key={place.id}>
+                          {editingPlaceId === place.id ? (
+                            <div style={{ padding: "12px 14px", background: MORANDI.white, borderBottom: pi < cityCustomPlaces.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                                <input value={editingPlaceData.name} onChange={e => setEditingPlaceData(p => ({ ...p, name: e.target.value }))} placeholder="名稱" style={inputStyle({ flex: 1 })} />
+                                <select value={editingPlaceData.cat} onChange={e => setEditingPlaceData(p => ({ ...p, cat: e.target.value }))} style={inputStyle({ background: MORANDI.white })}>
+                                  {CAT_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              </div>
+                              <input value={editingPlaceData.note} onChange={e => setEditingPlaceData(p => ({ ...p, note: e.target.value }))} placeholder="備註 (可選)" style={inputStyle({ width: "100%", marginBottom: 8, boxSizing: "border-box" })} />
+                              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                <button onClick={() => setEditingPlaceId(null)} style={{ padding: "5px 12px", border: `1px solid ${MORANDI.border}`, borderRadius: 6, background: "transparent", fontSize: 11, cursor: "pointer", color: MORANDI.textLight }}>取消</button>
+                                <button onClick={() => saveEditPlace(activeCity)} style={{ padding: "5px 12px", border: "none", borderRadius: 6, background: MORANDI.accent, color: MORANDI.white, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>儲存</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ padding: "9px 14px", display: "flex", alignItems: "flex-start", gap: 8, borderBottom: pi < cityCustomPlaces.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 9, background: MORANDI.accentSoft + "44", color: MORANDI.accent, padding: "2px 6px", borderRadius: 7, fontWeight: 600, border: `1px solid ${MORANDI.accentSoft}` }}>{place.cat}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 500 }}>{place.name}</span>
+                                  <MapsLink name={place.name} cityNameEn={city.nameEn} />
+                                  {place.mapLat && <span style={{ fontSize: 9, color: MORANDI.accent }} title="已加入地圖">📌</span>}
+                                </div>
+                                {place.note && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{place.note}</div>}
+                              </div>
+                              <div style={{ display: "flex", gap: 0, flexShrink: 0 }}>
+                                <IconBtn onClick={() => startEditPlace(place)} title="編輯">✏️</IconBtn>
+                                <IconBtn onClick={() => handleDeletePlace(activeCity, place.id)} title="刪除" danger>✕</IconBtn>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
 
-                <div style={{ display: "flex", gap: 6 }}>
-                  <select value={newPlaceCat} onChange={e => setNewPlaceCat(e.target.value)} style={inputStyle({ background: MORANDI.white, flex: 1 })}>
-                    {CAT_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <button type="submit" style={{ padding: "6px 16px", background: MORANDI.accent, color: MORANDI.white, border: "none", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Add</button>
-                </div>
-              </form>
-            </div>
+                  {/* Add new place form with Nominatim autocomplete */}
+                  <form onSubmit={handleAddPlace} style={{ background: MORANDI.white, padding: 12, borderRadius: 12, border: `1px solid ${MORANDI.border}` }}>
+                    <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 8 }}>➕ 新增地點</div>
 
-            {/* ── Expense tracker ── */}
-            <div style={{ background: MORANDI.white, padding: 20, borderRadius: 16, border: `1px solid ${MORANDI.border}`, marginTop: 24 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${MORANDI.border}`, paddingBottom: 10, marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5 }}>💵 歐遊金錢記帳總覽</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: MORANDI.warm }}>Total: ${totalSpent.toLocaleString()} HKD</div>
-              </div>
-
-              <div style={{ marginBottom: 12 }}>
-                {expenses.map(exp => (
-                  <div key={exp.id}>
-                    {editingExpenseId === exp.id ? (
-                      <div style={{ padding: "8px 0", borderBottom: `1px solid ${MORANDI.border}` }}>
-                        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                          <input value={editingExpenseData.desc} onChange={e => setEditingExpenseData(p => ({ ...p, desc: e.target.value }))} placeholder="項目" style={inputStyle({ flex: 2 })} />
-                          <input type="number" value={editingExpenseData.amount} onChange={e => setEditingExpenseData(p => ({ ...p, amount: e.target.value }))} placeholder="金額" style={inputStyle({ flex: 1 })} />
-                        </div>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
-                          <select value={editingExpenseData.category} onChange={e => setEditingExpenseData(p => ({ ...p, category: e.target.value }))} style={inputStyle({ background: MORANDI.white })}>
-                            {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => setEditingExpenseId(null)} style={{ padding: "4px 10px", border: `1px solid ${MORANDI.border}`, borderRadius: 6, background: "transparent", fontSize: 11, cursor: "pointer", color: MORANDI.textLight }}>取消</button>
-                            <button onClick={saveEditExpense} style={{ padding: "4px 10px", border: "none", borderRadius: 6, background: MORANDI.warm, color: MORANDI.white, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>儲存</button>
-                          </div>
-                        </div>
+                    <div ref={suggestionsRef} style={{ position: "relative", marginBottom: 8 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          type="text"
+                          placeholder="搜尋地點 (Nominatim 建議)"
+                          value={newPlaceName}
+                          onChange={e => {
+                            setNewPlaceName(e.target.value);
+                            setSelectedNominatim(null);
+                            setShowSuggestions(true);
+                          }}
+                          onFocus={() => setShowSuggestions(true)}
+                          style={inputStyle({ flex: 1 })}
+                          autoComplete="off"
+                        />
+                        <a
+                          href={newPlaceName.trim() ? mapsUrl(newPlaceName.trim(), city.nameEn) : undefined}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={e => { if (!newPlaceName.trim()) e.preventDefault(); }}
+                          title="先喺 Google Maps 搵"
+                          style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", borderRadius: 7, border: `1px solid ${MORANDI.border}`, background: newPlaceName.trim() ? MORANDI.bg : MORANDI.card, color: newPlaceName.trim() ? MORANDI.text : MORANDI.textLight, fontSize: 12, textDecoration: "none", cursor: newPlaceName.trim() ? "pointer" : "default", whiteSpace: "nowrap", flexShrink: 0 }}
+                        >
+                          🗺️
+                        </a>
                       </div>
-                    ) : (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "7px 0", borderBottom: `1px solid ${MORANDI.border}`, color: MORANDI.text }}>
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          {exp.desc}{" "}
-                          <span style={{ fontSize: 9, background: MORANDI.card, padding: "2px 4px", borderRadius: 4, color: MORANDI.textLight }}>{exp.category}</span>
-                        </span>
-                        <span style={{ fontWeight: 500, flexShrink: 0 }}>${exp.amount.toLocaleString()}</span>
-                        <IconBtn onClick={() => startEditExpense(exp)} title="編輯">✏️</IconBtn>
-                        <IconBtn onClick={() => handleDeleteExpense(exp.id)} title="刪除" danger>✕</IconBtn>
+
+                      {/* Nominatim dropdown */}
+                      {showSuggestions && nominatimSuggestions.length > 0 && (
+                        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 44, background: MORANDI.white, border: `1px solid ${MORANDI.border}`, borderRadius: 10, zIndex: 50, boxShadow: "0 6px 20px rgba(74,69,65,0.12)", overflow: "hidden" }}>
+                          {nominatimSuggestions.map((s, i) => {
+                            const name = s.display_name.split(",")[0];
+                            const sub = s.display_name.split(",").slice(1, 3).join(", ").trim();
+                            return (
+                              <div
+                                key={i}
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  setNewPlaceName(name);
+                                  setSelectedNominatim(s);
+                                  setShowSuggestions(false);
+                                }}
+                                style={{ padding: "9px 12px", cursor: "pointer", borderBottom: i < nominatimSuggestions.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}
+                                onMouseEnter={e => e.currentTarget.style.background = MORANDI.card}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                              >
+                                <div style={{ fontSize: 13, fontWeight: 500, color: MORANDI.text }}>{name}</div>
+                                {sub && <div style={{ fontSize: 10, color: MORANDI.textLight, marginTop: 1 }}>{sub}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <select value={newPlaceCat} onChange={e => setNewPlaceCat(e.target.value)} style={inputStyle({ background: MORANDI.white, flex: 1 })}>
+                        {CAT_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <button type="submit" style={{ padding: "6px 16px", background: MORANDI.accent, color: MORANDI.white, border: "none", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Add</button>
+                    </div>
+                    {selectedNominatim && (
+                      <div style={{ marginTop: 6, fontSize: 10, color: MORANDI.accent, fontStyle: "italic" }}>
+                        📌 將在地圖顯示 Pin
                       </div>
                     )}
+                  </form>
+                </div>
+
+                {/* ── Expense tracker ── */}
+                <div style={{ background: MORANDI.white, padding: 18, borderRadius: 16, border: `1px solid ${MORANDI.border}`, marginTop: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${MORANDI.border}`, paddingBottom: 9, marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5 }}>💵 歐遊金錢記帳總覽</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: MORANDI.warm }}>HK${totalSpent.toLocaleString()}</div>
                   </div>
-                ))}
+
+                  <div style={{ marginBottom: 10 }}>
+                    {expenses.map(exp => (
+                      <div key={exp.id}>
+                        {editingExpenseId === exp.id ? (
+                          <div style={{ padding: "8px 0", borderBottom: `1px solid ${MORANDI.border}` }}>
+                            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                              <input value={editingExpenseData.desc} onChange={e => setEditingExpenseData(p => ({ ...p, desc: e.target.value }))} placeholder="項目" style={inputStyle({ flex: 2 })} />
+                              <input type="number" value={editingExpenseData.amount} onChange={e => setEditingExpenseData(p => ({ ...p, amount: e.target.value }))} placeholder="金額" style={inputStyle({ flex: 1 })} />
+                            </div>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+                              <select value={editingExpenseData.category} onChange={e => setEditingExpenseData(p => ({ ...p, category: e.target.value }))} style={inputStyle({ background: MORANDI.white })}>
+                                {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button onClick={() => setEditingExpenseId(null)} style={{ padding: "4px 10px", border: `1px solid ${MORANDI.border}`, borderRadius: 6, background: "transparent", fontSize: 11, cursor: "pointer", color: MORANDI.textLight }}>取消</button>
+                                <button onClick={saveEditExpense} style={{ padding: "4px 10px", border: "none", borderRadius: 6, background: MORANDI.warm, color: MORANDI.white, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>儲存</button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "7px 0", borderBottom: `1px solid ${MORANDI.border}`, color: MORANDI.text }}>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              {exp.desc}{" "}
+                              <span style={{ fontSize: 9, background: MORANDI.card, padding: "2px 4px", borderRadius: 4, color: MORANDI.textLight }}>{exp.category}</span>
+                            </span>
+                            <span style={{ fontWeight: 500, flexShrink: 0 }}>HK${exp.amount.toLocaleString()}</span>
+                            <IconBtn onClick={() => startEditExpense(exp)} title="編輯">✏️</IconBtn>
+                            <IconBtn onClick={() => handleDeleteExpense(exp.id)} title="刪除" danger>✕</IconBtn>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleAddExpense} style={{ display: "flex", flexDirection: "column", gap: 7, borderTop: `1px solid ${MORANDI.border}`, paddingTop: 10 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="text" placeholder="新支出項目" value={newExpenseDesc} onChange={e => setNewExpenseDesc(e.target.value)} style={inputStyle({ flex: 2 })} />
+                      <input type="number" placeholder="HKD" value={newExpenseAmount} onChange={e => setNewExpenseAmount(e.target.value)} style={inputStyle({ flex: 1 })} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <select value={newExpenseCat} onChange={e => setNewExpenseCat(e.target.value)} style={inputStyle({ background: MORANDI.white })}>
+                        {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <button type="submit" style={{ padding: "6px 14px", background: MORANDI.warm, color: MORANDI.white, border: "none", borderRadius: 6, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>記帳</button>
+                    </div>
+                  </form>
+                </div>
               </div>
-
-              <form onSubmit={handleAddExpense} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${MORANDI.border}`, paddingTop: 12 }}>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input type="text" placeholder="新支出項目 (如: 午餐)" value={newExpenseDesc} onChange={e => setNewExpenseDesc(e.target.value)} style={inputStyle({ flex: 2 })} />
-                  <input type="number" placeholder="金額 (HKD)" value={newExpenseAmount} onChange={e => setNewExpenseAmount(e.target.value)} style={inputStyle({ flex: 1 })} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <select value={newExpenseCat} onChange={e => setNewExpenseCat(e.target.value)} style={inputStyle({ background: MORANDI.white })}>
-                    {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <button type="submit" style={{ padding: "6px 14px", background: MORANDI.warm, color: MORANDI.white, border: "none", borderRadius: 6, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>記帳</button>
-                </div>
-              </form>
-            </div>
-
+            ) : (
+              /* ── Map tab ── */
+              <div>
+                <TripTimeline activeCity={activeCity} onCityChange={setActiveCity} />
+                <MapView
+                  activeCity={activeCity}
+                  customPlaces={customPlaces}
+                  onAddPlace={handleMapAddPlace}
+                />
+              </div>
+            )}
           </div>
-        ) : (
-          <MapView activeCity={activeCity} />
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
