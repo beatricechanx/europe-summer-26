@@ -6,6 +6,8 @@ import TripTimeline from "./components/TripTimeline";
 import BudgetPage from "./components/BudgetPage";
 import DailyPlanner from "./components/DailyPlanner";
 import InfoPage from "./components/InfoPage";
+import SavedPlacesPage from "./components/SavedPlacesPage";
+import PhotoBook from "./components/PhotoBook";
 import { usePersisted } from "./utils/storage";
 import { MAP_PLACES } from "./data/places";
 
@@ -134,11 +136,11 @@ const cities = [
 
 const transport = [
   { from: "Hong Kong (HKG)", to: "Beijing (PEK)", icon: "✈️", flight: "CA 110", detail: "7/10 Fri · 17:45 — 21:15", trainKey: null },
-  { from: "Beijing (PEK)", to: "Vienna (VIE)", icon: "✈️", flight: "CA 841", detail: "7/11 Sat · 02:55 — 06:50", trainKey: null },
-  { from: "Vienna", to: "Prague", icon: "🚂", flight: "ÖBB Train", detail: "7/13 · ~4hr 行程", trainKey: "vp" },
-  { from: "Prague", to: "Budapest", icon: "🚂", flight: "ČD Train", detail: "7/15 · 6:00am · ~7hr 行程", trainKey: "pb" },
+  { from: "Beijing (PEK)", to: "Vienna (VIE)",   icon: "✈️", flight: "CA 841", detail: "7/11 Sat · 02:55 — 06:50", trainKey: null },
+  { from: "Vienna", to: "Prague",                icon: "🚂", flight: "ÖBB Train", detail: "7/13 · ~4hr 行程", trainKey: "vp" },
+  { from: "Prague", to: "Budapest",              icon: "🚂", flight: "ČD Train",  detail: "7/15 · 6:00am · ~7hr 行程", trainKey: "pb" },
   { from: "Budapest (BUD)", to: "Beijing (PEK)", icon: "✈️", flight: "CA 720", detail: "7/17 Fri · 13:00 — 04:10 (+1)", trainKey: null },
-  { from: "Beijing (PKX)", to: "Hong Kong (HKG)", icon: "✈️", flight: "CA 763", detail: "7/18 Sat · 13:40 — 17:10", trainKey: null },
+  { from: "Beijing (PKX)", to: "Hong Kong (HKG)",icon: "✈️", flight: "CA 763", detail: "7/18 Sat · 13:40 — 17:10", trainKey: null },
 ];
 
 const DEFAULT_EXPENSES = [
@@ -148,7 +150,7 @@ const DEFAULT_EXPENSES = [
   { id: 4, desc: "Budapest 酒店住宿", amount: 3800, category: "住宿" },
 ];
 
-// ── Tiny shared UI ──────────────────────────────────────────────────────────
+// ── Shared UI components ────────────────────────────────────────────────────
 
 const ChevronDown = ({ rotated }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
@@ -191,6 +193,8 @@ const CatIcon = ({ cat }) => {
   );
 };
 
+// ── City skyline illustrations ──────────────────────────────────────────────
+
 const CityIllustration = ({ city }) => {
   if (city === "vienna") return (
     <svg viewBox="0 0 200 80" style={{ width: "100%", height: 80 }}>
@@ -205,6 +209,10 @@ const CityIllustration = ({ city }) => {
         return <circle key={a} cx={x} cy={y} r="2.5" fill="none" stroke={MORANDI.sage} strokeWidth="0.5" />;
       })}
       <rect x="22" y="62" width="12" height="10" rx="2" fill="none" stroke={MORANDI.warm} strokeWidth="0.8" />
+      {/* Decorative stars */}
+      {[[18,12],[170,20],[95,8]].map(([x,y], i) => (
+        <text key={i} x={x} y={y} fontSize="8" fill={MORANDI.accentSoft} style={{ animation: `sparkle ${2+i}s ease-in-out ${i*0.6}s infinite` }}>✦</text>
+      ))}
     </svg>
   );
   if (city === "prague") return (
@@ -216,6 +224,9 @@ const CityIllustration = ({ city }) => {
       <polygon points="74,20 68,12 80,12" fill="none" stroke={MORANDI.accent} strokeWidth="0.7" />
       <rect x="90" y="30" width="10" height="30" fill="none" stroke={MORANDI.accent} strokeWidth="0.7" />
       <polygon points="95,30 88,22 102,22" fill="none" stroke={MORANDI.accent} strokeWidth="0.7" />
+      {[[15,18],[175,14],[110,9]].map(([x,y], i) => (
+        <text key={i} x={x} y={y} fontSize="8" fill={MORANDI.dustyRose} opacity="0.6" style={{ animation: `sparkle ${2.5+i*0.7}s ease-in-out ${i*0.5}s infinite` }}>✦</text>
+      ))}
     </svg>
   );
   return (
@@ -225,9 +236,104 @@ const CityIllustration = ({ city }) => {
       <path d="M25,55 Q45,20 75,55" fill="none" stroke={MORANDI.accent} strokeWidth="0.7" />
       <rect x="40" y="28" width="16" height="12" fill="none" stroke={MORANDI.accent} strokeWidth="0.7" rx="1" />
       <ellipse cx="135" cy="35" rx="8" ry="6" fill="none" stroke={MORANDI.slate} strokeWidth="0.6" />
+      {[[20,12],[160,18],[100,7]].map(([x,y], i) => (
+        <text key={i} x={x} y={y} fontSize="8" fill={MORANDI.slate} opacity="0.6" style={{ animation: `sparkle ${2+i*0.8}s ease-in-out ${i*0.4}s infinite` }}>✦</text>
+      ))}
     </svg>
   );
 };
+
+// ── Animated transport route visualization ──────────────────────────────────
+
+function TransportViz() {
+  return (
+    <div style={{ padding: "4px 0 14px" }}>
+      <svg viewBox="0 0 230 96" style={{ width: "100%", height: 96, overflow: "visible" }}>
+        <defs>
+          <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={MORANDI.slate} stopOpacity="0.06" />
+            <stop offset="100%" stopColor={MORANDI.bg}  stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <rect width="230" height="90" fill="url(#skyGrad)" rx="10" />
+
+        {/* Outbound flights — warm */}
+        <path d="M205,72 Q190,40 168,52" fill="none" stroke={MORANDI.warm} strokeWidth="1.3" strokeOpacity="0.5" />
+        <path d="M168,52 Q110,10 44,42"  fill="none" stroke={MORANDI.warm} strokeWidth="1.3" strokeOpacity="0.5" />
+        {/* Train legs — sage dashed */}
+        <path d="M44,42 Q57,28 70,26"    fill="none" stroke={MORANDI.sage} strokeWidth="1.6" strokeDasharray="4 3" strokeOpacity="0.65" />
+        <path d="M70,26 Q86,20 102,44"   fill="none" stroke={MORANDI.sage} strokeWidth="1.6" strokeDasharray="4 3" strokeOpacity="0.65" />
+        {/* Return flights — slate dashed */}
+        <path d="M102,44 Q140,18 168,52" fill="none" stroke={MORANDI.slate} strokeWidth="1"   strokeDasharray="2 5" strokeOpacity="0.4" />
+        <path d="M168,52 Q190,72 205,72" fill="none" stroke={MORANDI.slate} strokeWidth="1"   strokeDasharray="2 5" strokeOpacity="0.4" />
+
+        {/* Full hidden path for animation */}
+        <path id="trip-route"
+          d="M205,72 Q190,40 168,52 Q110,10 44,42 Q57,28 70,26 Q86,20 102,44 Q140,18 168,52 Q190,72 205,72"
+          fill="none" stroke="none" />
+
+        {/* Animated traveller dot */}
+        <circle r="4" fill={MORANDI.dustyRose} stroke={MORANDI.white} strokeWidth="1.5">
+          <animateMotion dur="20s" repeatCount="indefinite">
+            <mpath href="#trip-route" />
+          </animateMotion>
+        </circle>
+
+        {/* City nodes */}
+        {[
+          { x: 205, y: 72, label: "HKG" },
+          { x: 168, y: 52, label: "PEK" },
+          { x:  44, y: 42, label: "VIE" },
+          { x:  70, y: 26, label: "PRG" },
+          { x: 102, y: 44, label: "BUD" },
+        ].map(c => (
+          <g key={c.label}>
+            <circle cx={c.x} cy={c.y} r="5"   fill={MORANDI.white}  stroke={MORANDI.accentSoft} strokeWidth="1.4" />
+            <circle cx={c.x} cy={c.y} r="2.2" fill={MORANDI.accent} />
+            <text x={c.x} y={c.y - 8} textAnchor="middle" fontSize="6.5"
+              fill={MORANDI.text} fontWeight="700" fontFamily="-apple-system, sans-serif">{c.label}</text>
+          </g>
+        ))}
+
+        {/* Legend */}
+        <g transform="translate(6,83)">
+          <line x1="0" y1="0" x2="12" y2="0" stroke={MORANDI.warm}  strokeWidth="1.5" />
+          <text x="15" y="3.5" fontSize="6.5" fill={MORANDI.textLight}>航班</text>
+          <line x1="38" y1="0" x2="50" y2="0" stroke={MORANDI.sage}  strokeWidth="1.5" strokeDasharray="4 3" />
+          <text x="53" y="3.5" fontSize="6.5" fill={MORANDI.textLight}>火車</text>
+          <line x1="76" y1="0" x2="88" y2="0" stroke={MORANDI.slate} strokeWidth="1.2" strokeDasharray="2 4" />
+          <text x="91" y="3.5" fontSize="6.5" fill={MORANDI.textLight}>回程</text>
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+// ── Floating sparkles in header ─────────────────────────────────────────────
+
+function FloatingSparkles() {
+  const sparks = [
+    { top: 10, left: 22,  delay: 0,    dur: 3.2, size: 10 },
+    { top: 30, right: 18, delay: 0.8,  dur: 2.8, size: 8  },
+    { top: 55, left: 40,  delay: 1.4,  dur: 3.6, size: 7  },
+    { top: 15, right: 44, delay: 0.3,  dur: 2.5, size: 9  },
+    { top: 70, right: 28, delay: 1.9,  dur: 3.0, size: 6  },
+    { top: 45, left: 14,  delay: 2.2,  dur: 2.7, size: 8  },
+  ];
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+      {sparks.map((s, i) => (
+        <span key={i} style={{
+          position: "absolute",
+          top: s.top, left: s.left, right: s.right,
+          fontSize: s.size, opacity: 0.45, color: MORANDI.accentSoft,
+          animation: `sparkle ${s.dur}s ease-in-out ${s.delay}s infinite`,
+          userSelect: "none",
+        }}>✦</span>
+      ))}
+    </div>
+  );
+}
 
 if (typeof document !== "undefined") {
   const href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap";
@@ -238,10 +344,27 @@ if (typeof document !== "undefined") {
   }
 }
 
-// ── Outer wrapper: handles user profile ─────────────────────────────────────
+// ── Outer wrapper: handles user profile + URL-hash restore ──────────────────
 
 export default function TravelPage() {
   const [user, setUser] = useState(() => localStorage.getItem("eu-user") || "");
+
+  // Restore data from #restore=<base64> share link
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#restore=")) return;
+    try {
+      const encoded = hash.slice(9);
+      const binStr  = atob(encoded);
+      const bytes   = Uint8Array.from(binStr, c => c.charCodeAt(0));
+      const data    = JSON.parse(new TextDecoder().decode(bytes));
+      Object.entries(data).forEach(([k, v]) => localStorage.setItem(k, v));
+      window.history.replaceState(null, "", window.location.pathname);
+      window.location.reload();
+    } catch {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   if (!user) {
     return (
@@ -266,60 +389,76 @@ export default function TravelPage() {
 
 // ── Inner app (remounted on user switch) ─────────────────────────────────────
 
+const TABS = [
+  ["itinerary", "清單"],
+  ["daily",     "每日"],
+  ["map",       "地圖"],
+  ["saved",     "收藏"],
+  ["photos",    "相冊"],
+  ["budget",    "預算"],
+  ["info",      "資訊"],
+];
+
 function AppContent({ user, onChangeUser }) {
   const userEmoji = user === "Bea" ? "🍒" : "🌸";
 
   const [activeCity, setActiveCity] = useState("vienna");
-  const [openCats, setOpenCats] = usePersisted(`${user}:openCats`, {});
-  const [trainRefs, setTrainRefs] = usePersisted(`${user}:trainRefs`, { vp: "", pb: "" });
+  const [openCats,   setOpenCats]   = usePersisted(`${user}:openCats`, {});
+  const [trainRefs,  setTrainRefs]  = usePersisted(`${user}:trainRefs`, { vp: "", pb: "" });
   const [checkedItems, setCheckedItems] = usePersisted(`${user}:checkedItems`, {});
-  const [activeTab, setActiveTab] = useState("itinerary");
+  const [activeTab, setActiveTab]   = useState("itinerary");
   const [transportOpen, setTransportOpen] = useState(true);
 
-  // Custom places (persisted, user-namespaced)
   const [customPlaces, setCustomPlaces] = usePersisted(`${user}:customPlaces`, { vienna: [], prague: [], budapest: [] });
-  const [newPlaceName, setNewPlaceName] = useState("");
-  const [newPlaceCat, setNewPlaceCat] = useState("景點");
+  const [newPlaceName,  setNewPlaceName]  = useState("");
+  const [newPlaceCat,   setNewPlaceCat]   = useState("景點");
   const [editingPlaceId, setEditingPlaceId] = useState(null);
   const [editingPlaceData, setEditingPlaceData] = useState({ name: "", note: "", cat: "景點" });
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions]   = useState(false);
   const [nominatimSuggestions, setNominatimSuggestions] = useState([]);
   const [selectedNominatim, setSelectedNominatim] = useState(null);
   const suggestionsRef = useRef(null);
 
-  // Love / Been / Note status per place (user-namespaced)
   const [placeStatus, setPlaceStatus] = usePersisted(`${user}:placeStatus`, {});
   const [expandedPlaceKey, setExpandedPlaceKey] = useState(null);
 
-  // Simple expenses (persisted, user-namespaced)
   const [expenses, setExpenses] = usePersisted(`${user}:expenses`, DEFAULT_EXPENSES);
-  const [newExpenseDesc, setNewExpenseDesc] = useState("");
+  const [newExpenseDesc,   setNewExpenseDesc]   = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
-  const [newExpenseCat, setNewExpenseCat] = useState("餐飲");
+  const [newExpenseCat,    setNewExpenseCat]    = useState("餐飲");
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [editingExpenseData, setEditingExpenseData] = useState({ desc: "", amount: "", category: "餐飲" });
 
   const [weatherData, setWeatherData] = useState({ vienna: "載入中…", prague: "載入中…", budapest: "載入中…" });
 
+  // iOS PWA banner: show once if on iOS Safari outside standalone mode
+  const [showIOSBanner, setShowIOSBanner] = useState(() => {
+    try {
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone;
+      return isIOS && !isStandalone && !localStorage.getItem("ios-banner-dismissed");
+    } catch { return false; }
+  });
+
   const importRef = useRef(null);
 
-  // Fetch weather
+  // Fetch live weather
   useEffect(() => {
     (async () => {
       const updated = {};
       for (const c of cities) {
         try {
-          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`);
+          const res  = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`);
           const data = await res.json();
           const temp = Math.round(data.current.temperature_2m);
           const code = data.current.weather_code;
           let desc = "晴朗";
-          if (code >= 1 && code <= 3) desc = "多雲";
+          if (code >= 1  && code <= 3)  desc = "多雲";
           if (code >= 45 && code <= 48) desc = "有霧";
           if (code >= 51 && code <= 67) desc = "飄雨";
           if (code >= 71 && code <= 77) desc = "有雪";
           if (code >= 80 && code <= 82) desc = "陣雨🌧️";
-          if (code >= 95) desc = "雷暴⛈️";
+          if (code >= 95)               desc = "雷暴⛈️";
           updated[c.id] = `${temp}°C · ${desc}`;
         } catch { updated[c.id] = c.weather; }
       }
@@ -327,15 +466,14 @@ function AppContent({ user, onChangeUser }) {
     })();
   }, []);
 
-  // Nominatim autocomplete for add-place form
+  // Nominatim autocomplete
   useEffect(() => {
     if (newPlaceName.trim().length < 2) { setNominatimSuggestions([]); return; }
     const timer = setTimeout(async () => {
       try {
         const bbox = CITY_BBOX[activeCity];
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(newPlaceName)}&format=json&limit=6&viewbox=${bbox}&bounded=1&email=beatricechanx@gmail.com&accept-language=zh-TW,zh-HK,zh,en`);
-        const data = await res.json();
-        setNominatimSuggestions(data);
+        const res  = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(newPlaceName)}&format=json&limit=6&viewbox=${bbox}&bounded=1&email=beatricechanx@gmail.com&accept-language=zh-TW,zh-HK,zh,en`);
+        setNominatimSuggestions(await res.json());
       } catch { setNominatimSuggestions([]); }
     }, 400);
     return () => clearTimeout(timer);
@@ -344,16 +482,15 @@ function AppContent({ user, onChangeUser }) {
   // Close suggestion dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target))
         setShowSuggestions(false);
-      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   // ── Place status helpers ──
-  const placeKey = (cityId, name) => `${cityId}::${name}`;
+  const placeKey  = (cityId, name) => `${cityId}::${name}`;
   const getStatus = (cityId, name) => placeStatus[placeKey(cityId, name)] ?? {};
   const toggleLove = (cityId, name, e) => {
     e.stopPropagation();
@@ -379,7 +516,7 @@ function AppContent({ user, onChangeUser }) {
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a    = document.createElement("a");
     a.href = url;
     a.download = `europe-trip-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
@@ -402,8 +539,8 @@ function AppContent({ user, onChangeUser }) {
   };
 
   // ── Checklist ──
-  const toggleCat  = (key) => setOpenCats(p => ({ ...p, [key]: !p[key] }));
-  const toggleCheck = (id) => setCheckedItems(p => ({ ...p, [id]: !p[id] }));
+  const toggleCat   = (key) => setOpenCats(p => ({ ...p, [key]: !p[key] }));
+  const toggleCheck = (id)  => setCheckedItems(p => ({ ...p, [id]: !p[id] }));
 
   // ── Custom place handlers ──
   const handleAddPlace = (e) => {
@@ -472,31 +609,25 @@ function AppContent({ user, onChangeUser }) {
   const city = cities.find(c => c.id === activeCity);
   const totalSpent = expenses.reduce((sum, x) => sum + x.amount, 0);
   const cityCustomPlaces = customPlaces[activeCity] ?? [];
-
-  // Tabs that show city chrome (city tabs, transport, etc.)
   const showCityChrome = activeTab === "itinerary" || activeTab === "map";
 
   // ── Place item row with Love/Been inline expand ──
   const PlaceRow = ({ item, cityId, cityNameEn, itemId, isChecked, isLast }) => {
-    const status = getStatus(cityId, item.name);
-    const pKey = placeKey(cityId, item.name);
+    const status   = getStatus(cityId, item.name);
+    const pKey     = placeKey(cityId, item.name);
     const isExpanded = expandedPlaceKey === pKey;
 
     return (
       <div style={{ borderBottom: !isLast ? `1px solid ${MORANDI.border}` : "none" }}>
-        {/* Main row */}
-        <div
-          onClick={() => setExpandedPlaceKey(isExpanded ? null : pKey)}
+        <div onClick={() => setExpandedPlaceKey(isExpanded ? null : pKey)}
           style={{ padding: "9px 16px", display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
             backgroundColor: isChecked ? "rgba(250,250,248,0.4)" : "transparent" }}>
-          {/* Checkbox / Been indicator */}
           <div onClick={e => { e.stopPropagation(); toggleCheck(itemId); }}
             style={{ width: 13, height: 13, borderRadius: "50%", border: `1px solid ${isChecked ? MORANDI.accent : MORANDI.textLight}`,
               background: isChecked ? MORANDI.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0, cursor: "pointer" }}>
             {isChecked && <div style={{ width: 5, height: 5, borderRadius: "50%", background: MORANDI.white }} />}
           </div>
-          {/* Name */}
           <div style={{ flex: 1, opacity: isChecked ? 0.5 : 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, fontWeight: 500, textDecoration: isChecked ? "line-through" : "none" }}>{item.name}</span>
@@ -505,7 +636,6 @@ function AppContent({ user, onChangeUser }) {
             </div>
             {item.note && !isExpanded && <div style={{ fontSize: 10, color: MORANDI.textLight, marginTop: 1 }}>{item.note}</div>}
           </div>
-          {/* Status pills */}
           <div style={{ display: "flex", gap: 3, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
             <button onClick={e => toggleLove(cityId, item.name, e)}
               style={{ padding: "2px 6px", borderRadius: 8, border: `1px solid ${status.loved ? "#C4A9A0" : MORANDI.border}`,
@@ -521,8 +651,6 @@ function AppContent({ user, onChangeUser }) {
           </div>
           <ChevronDown rotated={isExpanded} />
         </div>
-
-        {/* Expanded detail */}
         {isExpanded && (
           <div style={{ padding: "0 16px 12px", background: MORANDI.card }}>
             {item.note && <div style={{ fontSize: 10, color: MORANDI.textLight, marginBottom: 8, fontStyle: "italic" }}>{item.note}</div>}
@@ -550,7 +678,8 @@ function AppContent({ user, onChangeUser }) {
       <input ref={importRef} type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
 
       {/* ── Header ── */}
-      <div style={{ padding: "36px 24px 14px", textAlign: "center" }}>
+      <div style={{ padding: "36px 24px 14px", textAlign: "center", position: "relative" }}>
+        <FloatingSparkles />
         <div style={{ fontSize: 10, letterSpacing: 4, textTransform: "uppercase", color: MORANDI.textLight, marginBottom: 8 }}>
           JULY 2026 ₍ᐢ.ˬ.ᐢ₎♡🍒
         </div>
@@ -580,20 +709,50 @@ function AppContent({ user, onChangeUser }) {
             style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 16,
               border: `1px solid ${MORANDI.border}`, background: MORANDI.card, color: MORANDI.textLight,
               fontSize: 10, cursor: "pointer" }}>
-            <span>{userEmoji}</span><span>{user}</span><span style={{ fontSize: 8 }}>切換</span>
+            <span>{userEmoji}</span><span>{user}</span>
+            <span style={{ fontSize: 8 }}>切換</span>
           </button>
+        </div>
+
+        {/* Persistent save indicator */}
+        <div style={{ marginTop: 8, fontSize: 9, color: MORANDI.border }}>
+          💾 資料自動儲存至本機
         </div>
       </div>
 
-      {/* ── 5 Tab switcher ── */}
-      <div style={{ display: "flex", padding: "0 24px", marginBottom: 18, gap: 4 }}>
-        {[["itinerary", "清單"], ["daily", "每日"], ["map", "地圖"], ["budget", "預算"], ["info", "資訊"]].map(([tab, label]) => (
+      {/* ── iOS PWA banner ── */}
+      {showIOSBanner && (
+        <div className="fade-in-up" style={{ margin: "0 24px 14px", padding: "11px 14px",
+          background: MORANDI.white, borderRadius: 12, border: `1px solid ${MORANDI.dustyRose}44`,
+          display: "flex", gap: 10, alignItems: "flex-start",
+          boxShadow: "0 2px 10px rgba(196,169,160,0.15)" }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>📱</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: MORANDI.text, marginBottom: 3 }}>加入主畫面，資料更穩定</div>
+            <div style={{ fontSize: 10, color: MORANDI.textLight, lineHeight: 1.55 }}>
+              Safari → 底部分享 <strong>□↑</strong> → 「加入主畫面」<br/>即可像 App 使用，避免資料被清除。
+            </div>
+          </div>
+          <button
+            onClick={() => { setShowIOSBanner(false); localStorage.setItem("ios-banner-dismissed", "1"); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: MORANDI.textLight,
+              fontSize: 16, padding: 0, flexShrink: 0, marginTop: 1 }}>✕</button>
+        </div>
+      )}
+
+      {/* ── 7-tab scrollable navigation ── */}
+      <div style={{ display: "flex", padding: "0 24px", marginBottom: 18, gap: 3,
+        overflowX: "auto", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+        {TABS.map(([tab, label]) => (
           <button key={tab} onClick={() => setActiveTab(tab)}
-            style={{ flex: 1, padding: "8px 2px", background: activeTab === tab ? MORANDI.card : "transparent",
-              color: activeTab === tab ? MORANDI.text : MORANDI.textLight, border: `1px solid ${activeTab === tab ? MORANDI.border : "transparent"}`,
+            style={{ flexShrink: 0, padding: "8px 11px",
+              background: activeTab === tab ? MORANDI.card : "transparent",
+              color: activeTab === tab ? MORANDI.text : MORANDI.textLight,
+              border: `1px solid ${activeTab === tab ? MORANDI.border : "transparent"}`,
               borderBottom: `2px solid ${activeTab === tab ? MORANDI.accent : "transparent"}`,
-              borderRadius: "8px 8px 0 0", fontSize: 10, fontWeight: activeTab === tab ? 600 : 400,
-              cursor: "pointer", letterSpacing: 0.2, transition: "all 0.15s" }}>
+              borderRadius: "8px 8px 0 0", fontSize: 11,
+              fontWeight: activeTab === tab ? 600 : 400,
+              cursor: "pointer", letterSpacing: 0.2, transition: "all 0.15s", whiteSpace: "nowrap" }}>
             {label}
           </button>
         ))}
@@ -603,11 +762,13 @@ function AppContent({ user, onChangeUser }) {
       {activeTab === "budget" && <BudgetPage user={user} />}
       {activeTab === "info"   && <InfoPage onExport={exportData} onImportClick={() => importRef.current?.click()} />}
       {activeTab === "daily"  && <DailyPlanner user={user} customPlaces={customPlaces} />}
+      {activeTab === "saved"  && <SavedPlacesPage user={user} placeStatus={placeStatus} customPlaces={customPlaces} />}
+      {activeTab === "photos" && <PhotoBook user={user} />}
 
-      {/* ── Itinerary + Map tabs: show transport + city chrome ── */}
+      {/* ── Itinerary + Map: city chrome ── */}
       {showCityChrome && (
         <>
-          {/* Transport — collapsible */}
+          {/* Transport section — animated + collapsible */}
           <div style={{ padding: "0 24px", marginBottom: 18 }}>
             <div style={{ background: MORANDI.card, borderRadius: 14, border: `1px solid ${MORANDI.border}`, overflow: "hidden" }}>
               <button onClick={() => setTransportOpen(p => !p)}
@@ -618,26 +779,30 @@ function AppContent({ user, onChangeUser }) {
                 <ChevronDown rotated={transportOpen} />
               </button>
               {transportOpen && (
-                <div style={{ padding: "4px 18px 8px" }}>
-                  {transport.map((t, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0",
-                      borderBottom: i < transport.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
-                      <span style={{ fontSize: 15, width: 20, marginTop: 2, textAlign: "center" }}>{t.icon}</span>
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: 12, fontWeight: 500 }}>{t.from} → {t.to}</span>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
-                          {t.flight && <span style={{ fontSize: 9, background: MORANDI.border, padding: "1px 5px", borderRadius: 4, color: MORANDI.text, fontWeight: 500 }}>{t.flight}</span>}
-                          <span style={{ fontSize: 10, color: MORANDI.textLight }}>{t.detail}</span>
+                <div style={{ padding: "4px 18px 10px" }}>
+                  {/* Animated route visualization */}
+                  <TransportViz />
+                  <div style={{ borderTop: `1px solid ${MORANDI.border}`, paddingTop: 8 }}>
+                    {transport.map((t, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0",
+                        borderBottom: i < transport.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
+                        <span style={{ fontSize: 15, width: 20, marginTop: 2, textAlign: "center" }}>{t.icon}</span>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: 12, fontWeight: 500 }}>{t.from} → {t.to}</span>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+                            {t.flight && <span style={{ fontSize: 9, background: MORANDI.border, padding: "1px 5px", borderRadius: 4, color: MORANDI.text, fontWeight: 500 }}>{t.flight}</span>}
+                            <span style={{ fontSize: 10, color: MORANDI.textLight }}>{t.detail}</span>
+                          </div>
                         </div>
+                        {t.trainKey && (
+                          <input placeholder="Ref 編號" value={trainRefs[t.trainKey]}
+                            onChange={e => setTrainRefs(p => ({ ...p, [t.trainKey]: e.target.value }))}
+                            style={{ width: 76, fontSize: 10, padding: "3px 7px", border: `1px solid ${MORANDI.border}`,
+                              borderRadius: 7, background: MORANDI.white, color: MORANDI.text, outline: "none", marginTop: 2 }} />
+                        )}
                       </div>
-                      {t.trainKey && (
-                        <input placeholder="Ref 編號" value={trainRefs[t.trainKey]}
-                          onChange={e => setTrainRefs(p => ({ ...p, [t.trainKey]: e.target.value }))}
-                          style={{ width: 76, fontSize: 10, padding: "3px 7px", border: `1px solid ${MORANDI.border}`,
-                            borderRadius: 7, background: MORANDI.white, color: MORANDI.text, outline: "none", marginTop: 2 }} />
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -658,7 +823,9 @@ function AppContent({ user, onChangeUser }) {
 
           {/* Per-city content */}
           <div style={{ padding: "0 24px" }}>
-            <div style={{ marginBottom: 12, opacity: 0.85 }}><CityIllustration city={activeCity} /></div>
+            <div className="fade-in-up" style={{ marginBottom: 12, opacity: 0.85 }}>
+              <CityIllustration city={activeCity} />
+            </div>
 
             <div style={{ textAlign: "center", marginBottom: 18, display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ fontSize: 15, fontWeight: 400, letterSpacing: 0.5, marginBottom: 3,
@@ -672,7 +839,7 @@ function AppContent({ user, onChangeUser }) {
             </div>
 
             {/* Hotel */}
-            <div style={{ background: MORANDI.white, borderRadius: 12, padding: "12px 14px", marginBottom: 8, border: `1px solid ${MORANDI.border}` }}>
+            <div className="fade-in-up" style={{ background: MORANDI.white, borderRadius: 12, padding: "12px 14px", marginBottom: 8, border: `1px solid ${MORANDI.border}` }}>
               <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: MORANDI.textLight, marginBottom: 4 }}>住宿</div>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{city.hotel}</div>
               <div style={{ fontSize: 10, color: MORANDI.textLight, marginTop: 1 }}>{city.hotelNote}</div>
@@ -685,15 +852,14 @@ function AppContent({ user, onChangeUser }) {
               <span style={{ fontSize: 11, color: MORANDI.textLight, fontStyle: "italic" }}>Real-time: {weatherData[activeCity]}</span>
             </div>
 
-            {/* ── Tab content ── */}
+            {/* ── Itinerary tab content ── */}
             {activeTab === "itinerary" ? (
               <div>
-                {/* Preset categories */}
                 {city.places.map((cat, ci) => {
-                  const key = `${activeCity}-${ci}`;
+                  const key    = `${activeCity}-${ci}`;
                   const isOpen = openCats[key] !== false;
                   return (
-                    <div key={key} style={{ marginBottom: 10 }}>
+                    <div key={key} className="fade-in-up" style={{ marginBottom: 10 }}>
                       <button onClick={() => toggleCat(key)}
                         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "10px 14px", border: "none", cursor: "pointer", background: MORANDI.card,
@@ -709,7 +875,7 @@ function AppContent({ user, onChangeUser }) {
                       {isOpen && (
                         <div style={{ background: MORANDI.card, borderRadius: "0 0 12px 12px" }}>
                           {cat.items.map((item, ii) => {
-                            const itemId = `${key}-${ii}`;
+                            const itemId    = `${key}-${ii}`;
                             const isChecked = !!checkedItems[itemId];
                             return (
                               <PlaceRow key={ii} item={item} cityId={activeCity}

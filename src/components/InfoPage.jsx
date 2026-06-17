@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 
 const MORANDI = {
   bg: "#E8E4DF", card: "#F2EFEB", text: "#4A4541", textLight: "#8A8580",
@@ -40,10 +40,10 @@ function Section({ title, children }) {
 function CurrencyConverter({ rate }) {
   const [fromHKD, setFromHKD] = useState("100");
   const [fromEUR, setFromEUR] = useState("");
-  const [dir, setDir] = useState("hkd"); // which field was last edited
+  const [dir, setDir] = useState("hkd");
 
-  const hkdVal  = dir === "hkd" ? parseFloat(fromHKD) || 0 : parseFloat(fromEUR || 0) * rate;
-  const eurVal  = dir === "eur" ? parseFloat(fromEUR) || 0 : parseFloat(fromHKD || 0) / rate;
+  const hkdVal = dir === "hkd" ? parseFloat(fromHKD) || 0 : parseFloat(fromEUR || 0) * rate;
+  const eurVal = dir === "eur" ? parseFloat(fromEUR) || 0 : parseFloat(fromHKD || 0) / rate;
 
   return (
     <div style={{ padding: "14px 16px" }}>
@@ -51,12 +51,9 @@ function CurrencyConverter({ rate }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 9, color: MORANDI.textLight, marginBottom: 4 }}>港幣 HKD</div>
           <div style={{ position: "relative" }}>
-            <input
-              type="number"
-              value={dir === "hkd" ? fromHKD : hkdVal.toFixed(2)}
+            <input type="number" value={dir === "hkd" ? fromHKD : hkdVal.toFixed(2)}
               onChange={e => { setFromHKD(e.target.value); setDir("hkd"); }}
-              style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${MORANDI.dustyRose}`, borderRadius: 10, fontSize: 18, fontWeight: 600, color: MORANDI.text, background: MORANDI.bg, outline: "none", boxSizing: "border-box" }}
-            />
+              style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${MORANDI.dustyRose}`, borderRadius: 10, fontSize: 18, fontWeight: 600, color: MORANDI.text, background: MORANDI.bg, outline: "none", boxSizing: "border-box" }} />
             <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: MORANDI.textLight }}>HK$</span>
           </div>
         </div>
@@ -64,25 +61,21 @@ function CurrencyConverter({ rate }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 9, color: MORANDI.textLight, marginBottom: 4 }}>歐羅 EUR</div>
           <div style={{ position: "relative" }}>
-            <input
-              type="number"
-              value={dir === "eur" ? fromEUR : eurVal.toFixed(2)}
+            <input type="number" value={dir === "eur" ? fromEUR : eurVal.toFixed(2)}
               onChange={e => { setFromEUR(e.target.value); setDir("eur"); }}
-              style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${MORANDI.sage}`, borderRadius: 10, fontSize: 18, fontWeight: 600, color: MORANDI.text, background: MORANDI.bg, outline: "none", boxSizing: "border-box" }}
-            />
+              style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${MORANDI.sage}`, borderRadius: 10, fontSize: 18, fontWeight: 600, color: MORANDI.text, background: MORANDI.bg, outline: "none", boxSizing: "border-box" }} />
             <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: MORANDI.textLight }}>€</span>
           </div>
         </div>
       </div>
       <div style={{ textAlign: "center", fontSize: 11, color: MORANDI.textLight }}>
         1 EUR = <strong style={{ color: MORANDI.warm }}>HK${rate.toFixed(4)}</strong>
-        <span style={{ marginLeft: 8, opacity: 0.6 }}>· 1 HKD = €{(1/rate).toFixed(4)}</span>
+        <span style={{ marginLeft: 8, opacity: 0.6 }}>· 1 HKD = €{(1 / rate).toFixed(4)}</span>
       </div>
     </div>
   );
 }
 
-// Quick reference table
 function QuickRef({ rate }) {
   const rows = [
     { label: "一杯咖啡", eur: 3.5 },
@@ -108,8 +101,9 @@ function QuickRef({ rate }) {
 }
 
 export default function InfoPage({ onExport, onImportClick }) {
-  const [rate, setRate] = useState(8.7); // fallback rate
+  const [rate, setRate]           = useState(8.7);
   const [rateUpdated, setRateUpdated] = useState(null);
+  const [linkState, setLinkState] = useState("idle"); // idle | copied | error
 
   useEffect(() => {
     fetch("https://open.er-api.com/v6/latest/EUR")
@@ -122,6 +116,33 @@ export default function InfoPage({ onExport, onImportClick }) {
       })
       .catch(() => {});
   }, []);
+
+  const generateLink = async () => {
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      // Skip base64 photo blobs — too large for a URL
+      if (!k.includes("Photo") && !k.includes("photoBook")) {
+        data[k] = localStorage.getItem(k);
+      }
+    }
+    try {
+      const json    = JSON.stringify(data);
+      const bytes   = new TextEncoder().encode(json);
+      const binStr  = Array.from(bytes, b => String.fromCharCode(b)).join("");
+      const encoded = btoa(binStr);
+      const url     = `${window.location.origin}${window.location.pathname}#restore=${encoded}`;
+      if (navigator.share) {
+        await navigator.share({ title: "Europe Trip 資料備份", url });
+      } else {
+        await navigator.clipboard.writeText(url);
+      }
+      setLinkState("copied");
+    } catch {
+      setLinkState("error");
+    }
+    setTimeout(() => setLinkState("idle"), 3500);
+  };
 
   return (
     <div style={{ padding: "0 24px" }}>
@@ -172,12 +193,30 @@ export default function InfoPage({ onExport, onImportClick }) {
         ))}
       </Section>
 
+      {/* Cross-device sync */}
+      <Section title="🔗 跨裝置同步">
+        <div style={{ padding: "14px 16px" }}>
+          <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 12, lineHeight: 1.7 }}>
+            生成一個含你所有資料嘅連結，<br />
+            發送到其他設備打開就可以還原。<br />
+            <span style={{ fontSize: 10, color: MORANDI.border }}>（相片太大，不包含在連結內）</span>
+          </div>
+          <button onClick={generateLink}
+            style={{ width: "100%", padding: "10px", border: "none", borderRadius: 10, fontSize: 12,
+              fontWeight: 600, cursor: "pointer", transition: "background 0.2s",
+              background: linkState === "copied" ? MORANDI.sage : linkState === "error" ? MORANDI.dustyRose : MORANDI.slate,
+              color: MORANDI.white }}>
+            {linkState === "copied" ? "✓ 已複製！發給另一部機開啟即可" : linkState === "error" ? "❌ 無法複製，請手動複製" : "🔗 生成備份連結"}
+          </button>
+        </div>
+      </Section>
+
       {/* Data management */}
-      <Section title="💾 資料備份">
+      <Section title="💾 本機備份">
         <div style={{ padding: "14px 16px" }}>
           <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 12, lineHeight: 1.6 }}>
-            個人資料儲存喺你部機嘅瀏覽器（localStorage）。<br />
-            如果想換其他設備，記得先<strong>匯出備份</strong>，然後喺新設備<strong>匯入</strong>。
+            你嘅資料已自動儲存喺本機瀏覽器。<br />
+            匯出 JSON 檔案可以完整備份（包括相片）。
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onExport}
@@ -189,8 +228,12 @@ export default function InfoPage({ onExport, onImportClick }) {
               📥 匯入備份
             </button>
           </div>
-          <div style={{ marginTop: 10, padding: "8px 12px", background: MORANDI.card, borderRadius: 8, fontSize: 10, color: MORANDI.textLight, lineHeight: 1.6 }}>
-            💡 iPhone 用戶：喺 Safari 開啟後，點擊分享按鈕 → 「加入主畫面」即可像 App 咁使用，資料更持久。
+          <div style={{ marginTop: 12, padding: "10px 12px", background: MORANDI.card, borderRadius: 10, lineHeight: 1.7 }}>
+            <div style={{ fontSize: 10, color: MORANDI.text, fontWeight: 600, marginBottom: 3 }}>📱 iPhone 用戶</div>
+            <div style={{ fontSize: 10, color: MORANDI.textLight }}>
+              Safari 開啟 → 點擊底部分享 <strong>□↑</strong> → 「加入主畫面」<br />
+              加入後像 App 咁使用，資料更持久、更穩定。
+            </div>
           </div>
         </div>
       </Section>
