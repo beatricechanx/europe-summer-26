@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { MAP_PLACES } from "../data/places";
 
 // Fix Leaflet default marker icon paths
 delete L.Icon.Default.prototype._getIconUrl;
@@ -60,53 +61,6 @@ const ICONS = Object.fromEntries(
   Object.entries(CAT_META).map(([cat, meta]) => [cat, makePinIcon(meta.color)])
 );
 const DEFAULT_ICON = makePinIcon(MORANDI.accent);
-
-const MAP_PLACES = [
-  // === 維也納 Vienna ===
-  { city: "vienna", cat: "景點", name: "St. Stephen's Cathedral", nameZh: "聖史蒂芬大教堂", lat: 48.2084, lng: 16.3735, note: "酒店步行5min · 可登南塔" },
-  { city: "vienna", cat: "景點", name: "Kunsthistorisches Museum", nameZh: "藝術史博物館", lat: 48.2033, lng: 16.3614, note: "世界級館藏 · 如果只揀一間博物館" },
-  { city: "vienna", cat: "景點", name: "Albertina", nameZh: "阿爾貝蒂娜美術館", lat: 48.2047, lng: 16.3681, note: "版畫與現當代藝術" },
-  { city: "vienna", cat: "景點", name: "Belvedere Palace", nameZh: "美景宮", lat: 48.1915, lng: 16.3809, note: "Klimt 原作《吻》" },
-  { city: "vienna", cat: "景點", name: "Votive Church", nameZh: "感恩/沃蒂夫教堂", lat: 48.2156, lng: 16.3585, note: "新哥德式 · 光影展" },
-  { city: "vienna", cat: "景點", name: "Karlskirche", nameZh: "卡爾教堂", lat: 48.1982, lng: 16.3714, note: "巴洛克式 · 可搭升降機上頂" },
-  { city: "vienna", cat: "景點", name: "Vienna City Hall", nameZh: "市政廳", lat: 48.2108, lng: 16.3573, note: "外觀打卡 · 7月有Film Festival" },
-  { city: "vienna", cat: "景點", name: "Prater", nameZh: "普拉特遊樂場", lat: 48.2166, lng: 16.3959, note: "摩天輪日落 Riesenrad" },
-  { city: "vienna", cat: "景點", name: "Kaisermühlenbucht", nameZh: "多瑙河灣觀景台", lat: 48.2315, lng: 16.4162, note: "22區 · 絕美多瑙河景" },
-  { city: "vienna", cat: "餐廳", name: "Figlmüller Bäckerstraße", nameZh: "費格米勒炸豬排", lat: 48.2093, lng: 16.3748, note: "經典炸豬排 €20–30" },
-  { city: "vienna", cat: "餐廳", name: "Schnitzel One", nameZh: "炸豬排一號", lat: 48.1932, lng: 16.3456, note: "評分更高 ⚡ 另一炸豬排選擇" },
-  { city: "vienna", cat: "餐廳", name: "Schweizerhaus", nameZh: "瑞士屋", lat: 48.2181, lng: 16.3984, note: "Prater 啤酒花園 · 豬腳+捷克啤酒" },
-  { city: "vienna", cat: "餐廳", name: "Chattanooga", nameZh: "查塔努加", lat: 48.2087, lng: 16.3701, note: "Graben 附近 · 下午4點後變明亮啤酒屋" },
-  { city: "vienna", cat: "咖啡 · 甜點", name: "Café Sperl", nameZh: "斯佩爾咖啡", lat: 48.2007, lng: 16.3606, note: "1880年 · 經典維也納咖啡館有鋼琴演奏" },
-  { city: "vienna", cat: "咖啡 · 甜點", name: "Café Diglas", nameZh: "蒂格拉斯咖啡", lat: 48.2078, lng: 16.3754, note: "近聖史蒂芬大教堂 · 蛋糕出色" },
-  { city: "vienna", cat: "咖啡 · 甜點", name: "Demel", nameZh: "德梅爾皇家糕點", lat: 48.2086, lng: 16.3673, note: "皇室甜點 · Kohlmarkt 14 極近酒店" },
-  { city: "vienna", cat: "咖啡 · 甜點", name: "Café Goldegg", nameZh: "金蛋咖啡", lat: 48.1904, lng: 16.3768, note: "近美景宮 · 本地人去嘅" },
-  { city: "vienna", cat: "咖啡 · 甜點", name: "GOTA Coffee Experts", nameZh: "GOTA精品咖啡", lat: 48.1939, lng: 16.3262, note: "歐洲頂尖 Specialty coffee" },
-
-  // === 布拉格 Prague ===
-  { city: "prague", cat: "景點", name: "Prague Castle", nameZh: "布拉格城堡", lat: 50.0911, lng: 14.4016, note: "世界最大古堡群 · 朝早去避人潮" },
-  { city: "prague", cat: "景點", name: "Charles Bridge", nameZh: "查理大橋", lat: 50.0865, lng: 14.4114, note: "日出與日落最靚 · 24小時開放" },
-  { city: "prague", cat: "景點", name: "Old Town Bridge Tower", nameZh: "舊城橋塔", lat: 50.0862, lng: 14.4135, note: "登頂望 Charles Bridge 全景" },
-  { city: "prague", cat: "景點", name: "The Vrtba Garden", nameZh: "維爾特巴花園", lat: 50.0869, lng: 14.4032, note: "UNESCO 巴洛克花園 · 人少寧靜" },
-  { city: "prague", cat: "景點", name: "Střelecký Island", nameZh: "射手島", lat: 50.0815, lng: 14.4098, note: "河中小島散步 · 休憩綠洲" },
-  { city: "prague", cat: "餐廳", name: "Kantýna", nameZh: "卡恩蒂納肉食館", lat: 50.0843, lng: 14.4303, note: "肉舖+餐廳概念 · 牛排本地人極推薦" },
-  { city: "prague", cat: "餐廳", name: "Venue", nameZh: "Venue bistro", lat: 50.0844, lng: 14.4215, note: "人氣極高 Brunch · 8am開易排隊" },
-  { city: "prague", cat: "餐廳", name: "Pork's Vodičkova", nameZh: "波克斯豬肉館", lat: 50.0792, lng: 14.4246, note: "豬肉專門店 · 豬扒更佳" },
-  { city: "prague", cat: "餐廳", name: "Terasa U Prince", nameZh: "王子露台", lat: 50.0872, lng: 14.4207, note: "Old Town Square 天台餐廳 · 經典打卡景觀" },
-  { city: "prague", cat: "咖啡 · 甜點", name: "Café Kafíčko", nameZh: "卡菲思科咖啡", lat: 50.0881, lng: 14.4045, note: "Malá Strana 寧靜小巷 · 必試蜂蜜蛋糕" },
-  { city: "prague", cat: "咖啡 · 甜點", name: "Arte Bianca Bakery", nameZh: "白藝術麵包店", lat: 50.0754, lng: 14.4448, note: "Vinohrady 區 4.9高分 · 開心果可頌" },
-
-  // === 布達佩斯 Budapest ===
-  { city: "budapest", cat: "景點", name: "Buda Castle", nameZh: "布達城堡", lat: 47.4962, lng: 19.0396, note: "Buda 側山頂 · 可搭纜車上山" },
-  { city: "budapest", cat: "景點", name: "Fisherman's Bastion", nameZh: "漁人堡", lat: 47.5019, lng: 19.0349, note: "日落與夜景時分最美 · 有童話感" },
-  { city: "budapest", cat: "景點", name: "Széchenyi Chain Bridge", nameZh: "塞切尼鏈橋", lat: 47.4989, lng: 19.0437, note: "最經典夜景大橋 · 連接布達與佩斯" },
-  { city: "budapest", cat: "景點", name: "Liberty Bridge", nameZh: "自由橋", lat: 47.4858, lng: 19.0556, note: "綠色鐵橋 · 非常容易出片" },
-  { city: "budapest", cat: "餐廳", name: "Cirkusz Café", nameZh: "馬戲團咖啡", lat: 47.4986, lng: 19.0601, note: "7:30am 開 · Brunch 首選" },
-  { city: "budapest", cat: "餐廳", name: "Comme Chez Soi", nameZh: "法式小館", lat: 47.4941, lng: 19.0528, note: "必試鵝肝配蘋果火焰 · 記得提前預約" },
-  { city: "budapest", cat: "餐廳", name: "Mosselen Belgian Beer Café", nameZh: "比利時啤酒咖啡", lat: 47.5142, lng: 19.0514, note: "主打青口與比利時啤酒 · 位於13區" },
-  { city: "budapest", cat: "餐廳", name: "Taste Asian", nameZh: "亞洲味道", lat: 47.4952, lng: 19.0589, note: "鵝肝+亞洲菜出色 · 想換口味時去" },
-  { city: "budapest", cat: "甜點 · 酒吧", name: "White Raven Skybar", nameZh: "白烏鴉天台酒吧", lat: 47.5021, lng: 19.0345, note: "Hilton 頂層 · 望漁人堡 Sunset 最佳 · 2pm開" },
-  { city: "budapest", cat: "甜點 · 酒吧", name: "Gelateria La Romana", nameZh: "羅馬娜雪糕", lat: 47.4925, lng: 19.0542, note: "連鎖高質意式雪糕店" },
-];
 
 const CITY_CENTERS = {
   vienna:   [48.2084, 16.3735],

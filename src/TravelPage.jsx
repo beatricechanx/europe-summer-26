@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import MapView from "./components/MapView";
+import { MAP_PLACES } from "./data/places";
 
 const MORANDI = {
   bg: "#E8E4DF",
@@ -18,6 +19,29 @@ const MORANDI = {
 
 const CAT_OPTIONS = ["景點", "餐廳", "咖啡 · 甜點", "甜點 · 酒吧", "其他"];
 const EXPENSE_CATS = ["餐飲", "交通", "住宿", "購物", "門票", "其他"];
+
+// ── Persist state to localStorage ──────────────────────────────────────────
+function usePersisted(key, defaultValue) {
+  const [state, setState] = useState(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? JSON.parse(stored) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
+  }, [key, state]);
+  return [state, setState];
+}
+
+// ── Google Maps search URL for a place name + city ─────────────────────────
+function mapsUrl(name, cityNameEn) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + " " + cityNameEn)}`;
+}
+
+// ── Data ────────────────────────────────────────────────────────────────────
 
 const cities = [
   {
@@ -131,7 +155,7 @@ const transport = [
   { from: "Beijing (PKX)", to: "Hong Kong (HKG)", icon: "✈️", flight: "CA 763", detail: "7/18 Sat · 13:40 — 17:10", trainKey: null },
 ];
 
-// ── Tiny UI primitives ──────────────────────────────────────────────────────
+// ── Tiny shared UI ──────────────────────────────────────────────────────────
 
 const ChevronDown = ({ rotated }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
@@ -146,6 +170,20 @@ const IconBtn = ({ onClick, title, children, danger }) => (
       color: danger ? "#C4A9A0" : MORANDI.textLight, fontSize: 13, lineHeight: 1, flexShrink: 0 }}>
     {children}
   </button>
+);
+
+// Small 📍 icon that opens Google Maps — stops row click propagation
+const MapsLink = ({ name, cityNameEn }) => (
+  <a
+    href={mapsUrl(name, cityNameEn)}
+    target="_blank"
+    rel="noopener noreferrer"
+    onClick={e => e.stopPropagation()}
+    title="在 Google Maps 搵"
+    style={{ fontSize: 12, color: MORANDI.textLight, textDecoration: "none", flexShrink: 0, lineHeight: 1, padding: "0 2px" }}
+  >
+    📍
+  </a>
 );
 
 const inputStyle = (extra = {}) => ({
@@ -188,7 +226,7 @@ const CityIllustration = ({ city }) => {
       <line x1="115" y1="70" x2="130" y2="45" stroke={MORANDI.sage} strokeWidth="0.5" />
       <line x1="145" y1="70" x2="130" y2="45" stroke={MORANDI.sage} strokeWidth="0.5" />
       {[0,45,90,135,180,225,270,315].map(a => {
-        const x = 130 + 25*Math.cos(a*Math.PI/180), y = 45 + 25*Math.sin(a*Math.PI/180);
+        const x = 130+25*Math.cos(a*Math.PI/180), y = 45+25*Math.sin(a*Math.PI/180);
         return <circle key={a} cx={x} cy={y} r="2.5" fill="none" stroke={MORANDI.sage} strokeWidth="0.5" />;
       })}
       <rect x="22" y="62" width="12" height="10" rx="2" fill="none" stroke={MORANDI.warm} strokeWidth="0.8" />
@@ -233,29 +271,32 @@ if (typeof document !== "undefined") {
 
 // ── Main component ──────────────────────────────────────────────────────────
 
+const DEFAULT_EXPENSES = [
+  { id: 1, desc: "機票 (CA 110 + CA 841)", amount: 6800, category: "交通" },
+  { id: 2, desc: "Vienna 酒店住宿", amount: 4500, category: "住宿" },
+  { id: 3, desc: "Prague 酒店住宿", amount: 3200, category: "住宿" },
+  { id: 4, desc: "Budapest 酒店住宿", amount: 3800, category: "住宿" },
+];
+
 export default function TravelPage() {
   const [activeCity, setActiveCity] = useState("vienna");
-  const [openCats, setOpenCats] = useState({});
-  const [trainRefs, setTrainRefs] = useState({ vp: "", pb: "" });
-  const [checkedItems, setCheckedItems] = useState({});
+  const [openCats, setOpenCats] = usePersisted("openCats", {});
+  const [trainRefs, setTrainRefs] = usePersisted("trainRefs", { vp: "", pb: "" });
+  const [checkedItems, setCheckedItems] = usePersisted("checkedItems", {});
   const [activeTab, setActiveTab] = useState("itinerary");
   const [transportOpen, setTransportOpen] = useState(true);
 
-  // ── Custom places ──
-  // item shape: { id, name, note, cat }
-  const [customPlaces, setCustomPlaces] = useState({ vienna: [], prague: [], budapest: [] });
+  // ── Custom places (persisted) ──
+  const [customPlaces, setCustomPlaces] = usePersisted("customPlaces", { vienna: [], prague: [], budapest: [] });
   const [newPlaceName, setNewPlaceName] = useState("");
   const [newPlaceCat, setNewPlaceCat] = useState("景點");
   const [editingPlaceId, setEditingPlaceId] = useState(null);
   const [editingPlaceData, setEditingPlaceData] = useState({ name: "", note: "", cat: "景點" });
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef(null);
 
-  // ── Expenses ──
-  const [expenses, setExpenses] = useState([
-    { id: 1, desc: "機票 (CA 110 + CA 841)", amount: 6800, category: "交通" },
-    { id: 2, desc: "Vienna 酒店住宿", amount: 4500, category: "住宿" },
-    { id: 3, desc: "Prague 酒店住宿", amount: 3200, category: "住宿" },
-    { id: 4, desc: "Budapest 酒店住宿", amount: 3800, category: "住宿" },
-  ]);
+  // ── Expenses (persisted) ──
+  const [expenses, setExpenses] = usePersisted("expenses", DEFAULT_EXPENSES);
   const [newExpenseDesc, setNewExpenseDesc] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
   const [newExpenseCat, setNewExpenseCat] = useState("餐飲");
@@ -265,7 +306,7 @@ export default function TravelPage() {
   // ── Weather ──
   const [weatherData, setWeatherData] = useState({ vienna: "載入天氣中...", prague: "載入天氣中...", budapest: "載入天氣中..." });
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchWeather = async () => {
       const updated = { ...weatherData };
       for (const c of cities) {
@@ -289,11 +330,31 @@ export default function TravelPage() {
     fetchWeather();
   }, []);
 
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // ── Autocomplete suggestions from MAP_PLACES ──
+  const suggestions = newPlaceName.trim().length >= 1
+    ? MAP_PLACES.filter(p =>
+        p.city === activeCity &&
+        (p.name.toLowerCase().includes(newPlaceName.toLowerCase()) ||
+         (p.nameZh && p.nameZh.includes(newPlaceName)))
+      ).slice(0, 6)
+    : [];
+
   // ── Checklist ──
   const toggleCat = (key) => setOpenCats(p => ({ ...p, [key]: !p[key] }));
   const toggleCheck = (id) => setCheckedItems(p => ({ ...p, [id]: !p[id] }));
 
-  // ── Custom places handlers ──
+  // ── Custom place handlers ──
   const handleAddPlace = (e) => {
     e.preventDefault();
     if (!newPlaceName.trim()) return;
@@ -302,6 +363,7 @@ export default function TravelPage() {
       [activeCity]: [...p[activeCity], { id: Date.now(), name: newPlaceName.trim(), note: "", cat: newPlaceCat }],
     }));
     setNewPlaceName("");
+    setShowSuggestions(false);
   };
 
   const handleDeletePlace = (cityId, placeId) => {
@@ -353,7 +415,7 @@ export default function TravelPage() {
 
   const city = cities.find(c => c.id === activeCity);
   const totalSpent = expenses.reduce((sum, x) => sum + x.amount, 0);
-  const cityCustomPlaces = customPlaces[activeCity];
+  const cityCustomPlaces = customPlaces[activeCity] ?? [];
 
   return (
     <div style={{ minHeight: "100vh", background: MORANDI.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Noto Sans TC', sans-serif", color: MORANDI.text, maxWidth: 480, margin: "0 auto", paddingBottom: 100 }}>
@@ -382,15 +444,10 @@ export default function TravelPage() {
       {/* ── Transport — collapsible ── */}
       <div style={{ padding: "0 24px", marginBottom: 24 }}>
         <div style={{ background: MORANDI.card, borderRadius: 16, border: `1px solid ${MORANDI.border}`, overflow: "hidden" }}>
-          {/* Header row — click to collapse */}
-          <button
-            onClick={() => setTransportOpen(p => !p)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", background: "transparent", border: "none", cursor: "pointer", borderBottom: transportOpen ? `1px solid ${MORANDI.border}` : "none" }}
-          >
+          <button onClick={() => setTransportOpen(p => !p)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", background: "transparent", border: "none", cursor: "pointer", borderBottom: transportOpen ? `1px solid ${MORANDI.border}` : "none" }}>
             <span style={{ fontSize: 10, letterSpacing: 2, color: MORANDI.textLight, textTransform: "uppercase", fontWeight: 500 }}>✈️ 航班與交通路程</span>
             <ChevronDown rotated={transportOpen} />
           </button>
-
           {transportOpen && (
             <div style={{ padding: "4px 20px 8px" }}>
               {transport.map((t, i) => (
@@ -404,12 +461,8 @@ export default function TravelPage() {
                     </div>
                   </div>
                   {t.trainKey && (
-                    <input
-                      placeholder="Ref 編號"
-                      value={trainRefs[t.trainKey]}
-                      onChange={e => setTrainRefs(p => ({ ...p, [t.trainKey]: e.target.value }))}
-                      style={{ width: 78, fontSize: 10, padding: "4px 8px", border: `1px solid ${MORANDI.border}`, borderRadius: 8, background: MORANDI.white, color: MORANDI.text, outline: "none", marginTop: 2 }}
-                    />
+                    <input placeholder="Ref 編號" value={trainRefs[t.trainKey]} onChange={e => setTrainRefs(p => ({ ...p, [t.trainKey]: e.target.value }))}
+                      style={{ width: 78, fontSize: 10, padding: "4px 8px", border: `1px solid ${MORANDI.border}`, borderRadius: 8, background: MORANDI.white, color: MORANDI.text, outline: "none", marginTop: 2 }} />
                   )}
                 </div>
               ))}
@@ -427,7 +480,7 @@ export default function TravelPage() {
         ))}
       </div>
 
-      {/* ── Main content ── */}
+      {/* ── Per-city content ── */}
       <div style={{ padding: "0 24px" }}>
         <div style={{ marginBottom: 16, opacity: 0.85 }}><CityIllustration city={activeCity} /></div>
 
@@ -484,13 +537,16 @@ export default function TravelPage() {
                         const isChecked = !!checkedItems[itemId];
                         return (
                           <div key={ii} onClick={() => toggleCheck(itemId)} style={{ padding: "11px 18px", display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", backgroundColor: isChecked ? "rgba(250,250,248,0.4)" : "transparent", borderBottom: ii < cat.items.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
+                            {/* Checkbox */}
                             <div style={{ marginTop: 2, width: 13, height: 13, borderRadius: "50%", border: `1px solid ${isChecked ? MORANDI.accent : MORANDI.textLight}`, background: isChecked ? MORANDI.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                               {isChecked && <div style={{ width: 5, height: 5, borderRadius: "50%", background: MORANDI.white }} />}
                             </div>
+                            {/* Name + maps link */}
                             <div style={{ flex: 1, opacity: isChecked ? 0.5 : 1 }}>
-                              <div style={{ fontSize: 13, fontWeight: 500, textDecoration: isChecked ? "line-through" : "none" }}>
-                                {item.name}
-                                {item.nameZh && <span style={{ fontSize: 12, color: MORANDI.textLight, fontWeight: 400, marginLeft: 4 }}>({item.nameZh})</span>}
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 13, fontWeight: 500, textDecoration: isChecked ? "line-through" : "none" }}>{item.name}</span>
+                                {item.nameZh && <span style={{ fontSize: 12, color: MORANDI.textLight, fontWeight: 400 }}>({item.nameZh})</span>}
+                                <MapsLink name={item.name} cityNameEn={city.nameEn} />
                               </div>
                               {item.note && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{item.note}</div>}
                             </div>
@@ -503,53 +559,37 @@ export default function TravelPage() {
               );
             })}
 
-            {/* ── Custom places section ── */}
+            {/* ── Custom places (My List) ── */}
             <div style={{ marginTop: 20, marginBottom: 12 }}>
               <div style={{ fontSize: 10, letterSpacing: 2, color: MORANDI.textLight, textTransform: "uppercase", marginBottom: 10, paddingLeft: 2 }}>
                 我的清單 · {city.nameEn}{cityCustomPlaces.length > 0 && ` (${cityCustomPlaces.length})`}
               </div>
 
-              {/* Existing custom places */}
               {cityCustomPlaces.length > 0 && (
                 <div style={{ background: MORANDI.card, borderRadius: 12, marginBottom: 10, overflow: "hidden", border: `1px solid ${MORANDI.border}` }}>
                   {cityCustomPlaces.map((place, pi) => (
                     <div key={place.id}>
                       {editingPlaceId === place.id ? (
-                        /* ── Inline edit form ── */
                         <div style={{ padding: "12px 16px", background: MORANDI.white, borderBottom: pi < cityCustomPlaces.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
                           <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                            <input
-                              value={editingPlaceData.name}
-                              onChange={e => setEditingPlaceData(p => ({ ...p, name: e.target.value }))}
-                              placeholder="名稱"
-                              style={inputStyle({ flex: 1 })}
-                            />
-                            <select
-                              value={editingPlaceData.cat}
-                              onChange={e => setEditingPlaceData(p => ({ ...p, cat: e.target.value }))}
-                              style={inputStyle({ background: MORANDI.white })}
-                            >
+                            <input value={editingPlaceData.name} onChange={e => setEditingPlaceData(p => ({ ...p, name: e.target.value }))} placeholder="名稱" style={inputStyle({ flex: 1 })} />
+                            <select value={editingPlaceData.cat} onChange={e => setEditingPlaceData(p => ({ ...p, cat: e.target.value }))} style={inputStyle({ background: MORANDI.white })}>
                               {CAT_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
-                          <input
-                            value={editingPlaceData.note}
-                            onChange={e => setEditingPlaceData(p => ({ ...p, note: e.target.value }))}
-                            placeholder="備註 (可選)"
-                            style={inputStyle({ width: "100%", marginBottom: 8, boxSizing: "border-box" })}
-                          />
+                          <input value={editingPlaceData.note} onChange={e => setEditingPlaceData(p => ({ ...p, note: e.target.value }))} placeholder="備註 (可選)" style={inputStyle({ width: "100%", marginBottom: 8, boxSizing: "border-box" })} />
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                             <button onClick={() => setEditingPlaceId(null)} style={{ padding: "5px 12px", border: `1px solid ${MORANDI.border}`, borderRadius: 6, background: "transparent", fontSize: 11, cursor: "pointer", color: MORANDI.textLight }}>取消</button>
                             <button onClick={() => saveEditPlace(activeCity)} style={{ padding: "5px 12px", border: "none", borderRadius: 6, background: MORANDI.accent, color: MORANDI.white, fontSize: 11, fontWeight: 500, cursor: "pointer" }}>儲存</button>
                           </div>
                         </div>
                       ) : (
-                        /* ── Display row ── */
                         <div style={{ padding: "10px 16px", display: "flex", alignItems: "flex-start", gap: 8, borderBottom: pi < cityCustomPlaces.length - 1 ? `1px solid ${MORANDI.border}` : "none" }}>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                               <span style={{ fontSize: 9, background: MORANDI.accentSoft + "44", color: MORANDI.accent, padding: "2px 7px", borderRadius: 8, fontWeight: 600, border: `1px solid ${MORANDI.accentSoft}` }}>{place.cat}</span>
                               <span style={{ fontSize: 13, fontWeight: 500 }}>{place.name}</span>
+                              <MapsLink name={place.name} cityNameEn={city.nameEn} />
                             </div>
                             {place.note && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 3 }}>{place.note}</div>}
                           </div>
@@ -564,29 +604,62 @@ export default function TravelPage() {
                 </div>
               )}
 
-              {/* Add new custom place */}
+              {/* Add new place form with autocomplete */}
               <form onSubmit={handleAddPlace} style={{ background: MORANDI.white, padding: 14, borderRadius: 12, border: `1px solid ${MORANDI.border}` }}>
                 <div style={{ fontSize: 11, color: MORANDI.textLight, marginBottom: 8 }}>➕ 新增地點</div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  <input
-                    type="text"
-                    placeholder="地點名稱"
-                    value={newPlaceName}
-                    onChange={e => setNewPlaceName(e.target.value)}
-                    style={inputStyle({ flex: 1 })}
-                  />
-                  {/* Search on Google Maps — opens in new tab with city context */}
-                  <a
-                    href={newPlaceName.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(newPlaceName.trim() + " " + city.nameEn)}` : undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="先喺 Google Maps 搵"
-                    onClick={e => { if (!newPlaceName.trim()) e.preventDefault(); }}
-                    style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", borderRadius: 7, border: `1px solid ${MORANDI.border}`, background: newPlaceName.trim() ? MORANDI.bg : MORANDI.card, color: newPlaceName.trim() ? MORANDI.text : MORANDI.textLight, fontSize: 12, textDecoration: "none", cursor: newPlaceName.trim() ? "pointer" : "default", whiteSpace: "nowrap", flexShrink: 0 }}
-                  >
-                    🗺️ Maps
-                  </a>
+
+                {/* Input + Maps button + autocomplete wrapper */}
+                <div ref={suggestionsRef} style={{ position: "relative", marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="text"
+                      placeholder="地點名稱 (輸入搜尋建議)"
+                      value={newPlaceName}
+                      onChange={e => { setNewPlaceName(e.target.value); setShowSuggestions(true); }}
+                      onFocus={() => setShowSuggestions(true)}
+                      style={inputStyle({ flex: 1 })}
+                      autoComplete="off"
+                    />
+                    {/* Opens Google Maps search in new tab */}
+                    <a
+                      href={newPlaceName.trim() ? mapsUrl(newPlaceName.trim(), city.nameEn) : undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => { if (!newPlaceName.trim()) e.preventDefault(); }}
+                      title="先喺 Google Maps 搵"
+                      style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", borderRadius: 7, border: `1px solid ${MORANDI.border}`, background: newPlaceName.trim() ? MORANDI.bg : MORANDI.card, color: newPlaceName.trim() ? MORANDI.text : MORANDI.textLight, fontSize: 12, textDecoration: "none", cursor: newPlaceName.trim() ? "pointer" : "default", whiteSpace: "nowrap", flexShrink: 0 }}
+                    >
+                      🗺️ Maps
+                    </a>
+                  </div>
+
+                  {/* Autocomplete dropdown */}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 44, background: MORANDI.white, border: `1px solid ${MORANDI.border}`, borderRadius: 10, zIndex: 50, boxShadow: "0 6px 20px rgba(74,69,65,0.12)", overflow: "hidden" }}>
+                      {suggestions.map((s, i) => (
+                        <div
+                          key={i}
+                          onMouseDown={e => {
+                            e.preventDefault(); // prevent blur before click
+                            setNewPlaceName(s.name);
+                            setNewPlaceCat(s.cat);
+                            setShowSuggestions(false);
+                          }}
+                          style={{ padding: "9px 14px", cursor: "pointer", borderBottom: i < suggestions.length - 1 ? `1px solid ${MORANDI.border}` : "none", background: "transparent" }}
+                          onMouseEnter={e => e.currentTarget.style.background = MORANDI.card}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 9, background: MORANDI.accentSoft + "33", color: MORANDI.accent, padding: "1px 6px", borderRadius: 6, fontWeight: 600, border: `1px solid ${MORANDI.accentSoft}`, flexShrink: 0 }}>{s.cat}</span>
+                            <span style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</span>
+                          </div>
+                          {s.nameZh && <div style={{ fontSize: 11, color: MORANDI.textLight, marginTop: 2 }}>{s.nameZh}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
                 <div style={{ display: "flex", gap: 6 }}>
                   <select value={newPlaceCat} onChange={e => setNewPlaceCat(e.target.value)} style={inputStyle({ background: MORANDI.white, flex: 1 })}>
                     {CAT_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -607,7 +680,6 @@ export default function TravelPage() {
                 {expenses.map(exp => (
                   <div key={exp.id}>
                     {editingExpenseId === exp.id ? (
-                      /* ── Inline expense edit ── */
                       <div style={{ padding: "8px 0", borderBottom: `1px solid ${MORANDI.border}` }}>
                         <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                           <input value={editingExpenseData.desc} onChange={e => setEditingExpenseData(p => ({ ...p, desc: e.target.value }))} placeholder="項目" style={inputStyle({ flex: 2 })} />
@@ -624,7 +696,6 @@ export default function TravelPage() {
                         </div>
                       </div>
                     ) : (
-                      /* ── Normal expense row ── */
                       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "7px 0", borderBottom: `1px solid ${MORANDI.border}`, color: MORANDI.text }}>
                         <span style={{ flex: 1, minWidth: 0 }}>
                           {exp.desc}{" "}
@@ -639,7 +710,6 @@ export default function TravelPage() {
                 ))}
               </div>
 
-              {/* Add new expense */}
               <form onSubmit={handleAddExpense} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${MORANDI.border}`, paddingTop: 12 }}>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input type="text" placeholder="新支出項目 (如: 午餐)" value={newExpenseDesc} onChange={e => setNewExpenseDesc(e.target.value)} style={inputStyle({ flex: 2 })} />
